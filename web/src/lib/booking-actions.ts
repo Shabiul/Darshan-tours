@@ -91,6 +91,12 @@ export async function submitBooking(input: {
     const res = await gatewayPost<{ ok: boolean; bookingNo?: string; bookingId?: number; customerId?: number; error?: string }>("/api/gateway/v1/booking/submit", input);
     if (res && res.ok && res.bookingId) {
       try {
+        const { cacheInvalidatePrefix } = await import("./redis");
+        await cacheInvalidatePrefix("web:gateway:");
+        await cacheInvalidatePrefix("vehicles:");
+        await cacheInvalidatePrefix("fleet:");
+      } catch {}
+      try {
         revalidatePath("/", "layout");
         revalidatePath("/vehicles", "page");
         revalidatePath("/booking", "page");
@@ -318,6 +324,18 @@ export async function submitBooking(input: {
         } catch {}
       }
     }
+
+    try {
+      const { cacheInvalidatePrefix } = await import("./redis");
+      await cacheInvalidatePrefix("web:gateway:");
+      await cacheInvalidatePrefix("vehicles:");
+      await cacheInvalidatePrefix("fleet:");
+    } catch {}
+    try {
+      revalidatePath("/", "layout");
+      revalidatePath("/vehicles", "page");
+      revalidatePath("/booking", "page");
+    } catch {}
 
     return { ok: true, bookingNo, bookingId, customerId };
   } catch (supaErr) {

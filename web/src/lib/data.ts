@@ -87,8 +87,8 @@ const FALLBACK_VEHICLES: Vehicle[] = [
 
   // Cars (Category 1) — Exact original counts
   {
-    id: 11, slug: "maruti-baleno-manual", name: "Maruti Suzuki Baleno", brand: "Maruti Suzuki", model: "Baleno", year: 2023, category_id: 1, category_name: "Cars", category_kind: "car", category_slug: "cars", branch_id: 1, branch_name: "Sakleshpura Branch", registration_no: "KA 13 MA 0550", cc: 1197, fuel_type: "Petrol", transmission: "Manual", seats: 5, mileage: "21 km/l", included_km: 300, extra_km_rate: 8, rate_12h: 2000, rate_24h: 3500, hourly_rate: 200, weekend_rate_24h: 3550, deposit: 2000, late_fee_per_hour: 150, total_units: 2, available_units: 2, description: "Comfortable premium hatchback.", terms: null, status: "available", active: 1, photos: ["/vehicles/baleno-manual.avif"], primary_photo: "/vehicles/baleno-manual.avif",
-    branch_distribution: [{ branch_id: 1, branch_name: "Sakleshpura Branch", total_units: 1, available_units: 1 }, { branch_id: 2, branch_name: "Hassan Branch", total_units: 1, available_units: 1 }]
+    id: 11, slug: "maruti-baleno-manual", name: "Maruti Suzuki Baleno", brand: "Maruti Suzuki", model: "Baleno", year: 2023, category_id: 1, category_name: "Cars", category_kind: "car", category_slug: "cars", branch_id: 1, branch_name: "Sakleshpura Branch", registration_no: "KA 13 MA 0550", cc: 1197, fuel_type: "Petrol", transmission: "Manual", seats: 5, mileage: "21 km/l", included_km: 300, extra_km_rate: 8, rate_12h: 2000, rate_24h: 3500, hourly_rate: 200, weekend_rate_24h: 3550, deposit: 2000, late_fee_per_hour: 150, total_units: 1, available_units: 1, description: "Comfortable premium hatchback.", terms: null, status: "available", active: 1, photos: ["/vehicles/baleno-manual.avif"], primary_photo: "/vehicles/baleno-manual.avif",
+    branch_distribution: [{ branch_id: 1, branch_name: "Sakleshpura Branch", total_units: 1, available_units: 1 }, { branch_id: 2, branch_name: "Hassan Branch", total_units: 0, available_units: 0 }]
   },
   {
     id: 13, slug: "maruti-dzire", name: "Maruti Dzire", brand: "Maruti Suzuki", model: "Dzire", year: 2023, category_id: 1, category_name: "Cars", category_kind: "car", category_slug: "cars", branch_id: 1, branch_name: "Sakleshpura Branch", registration_no: "KA 18 O 3985", cc: 1197, fuel_type: "Petrol", transmission: "Manual", seats: 5, mileage: "23 km/l", included_km: 300, extra_km_rate: 8, rate_12h: 2000, rate_24h: 3500, hourly_rate: 200, weekend_rate_24h: 3550, deposit: 2000, late_fee_per_hour: 150, total_units: 1, available_units: 1, description: "Fuel-efficient compact sedan.", terms: null, status: "available", active: 1, photos: ["/vehicles/maruti-dzire.avif"], primary_photo: "/vehicles/maruti-dzire.avif",
@@ -187,12 +187,14 @@ async function fetchContentFromSupabase(): Promise<Partial<Content> | null> {
     const { createClient } = await import("@supabase/supabase-js");
     const supabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } });
 
+    const nowIso = new Date().toISOString();
     const [
       { data: supaCategories },
       { data: supaVehicles },
       { data: supaPhotos },
       { data: supaBranches },
       { data: supaUnits },
+      { data: supaBookings },
       { data: supaTestimonials },
       { data: supaFaqs },
       { data: supaTerms },
@@ -204,6 +206,7 @@ async function fetchContentFromSupabase(): Promise<Partial<Content> | null> {
       supabase.from("vehicle_photos").select("*").order("is_primary", { ascending: false }),
       supabase.from("branches").select("*").eq("active", 1),
       supabase.from("vehicle_units").select("id, vehicle_id, current_branch_id, status, active").eq("active", 1),
+      supabase.from("bookings").select("vehicle_id, branch_id, vehicle_unit_id, status, return_at").not("status", "in", '("Cancelled","Completed","Rejected")').gte("return_at", nowIso),
       supabase.from("testimonials").select("*").eq("active", 1).order("sort"),
       supabase.from("faqs").select("*").eq("active", 1).order("sort"),
       supabase.from("terms_versions").select("*").eq("active", 1).order("version", { ascending: false }).limit(1),
@@ -219,6 +222,25 @@ async function fetchContentFromSupabase(): Promise<Partial<Content> | null> {
       for (const b of supaBranches) {
         branchNameMap.set(b.id, b.name);
         branchBlockedMap.set(b.id, Number((b as any).blocked) === 1);
+      }
+    }
+
+    const holdsByVehicle = new Map<number, number>();
+    const holdsByVehicleAndBranch = new Map<string, number>();
+    const bookedUnitIds = new Set<number>();
+
+    if (supaBookings) {
+      for (const b of supaBookings) {
+        const vKey = Number(b.vehicle_id);
+        holdsByVehicle.set(vKey, (holdsByVehicle.get(vKey) ?? 0) + 1);
+
+        if (b.branch_id) {
+          const vbKey = `${vKey}_${b.branch_id}`;
+          holdsByVehicleAndBranch.set(vbKey, (holdsByVehicleAndBranch.get(vbKey) ?? 0) + 1);
+        }
+        if (b.vehicle_unit_id) {
+          bookedUnitIds.add(Number(b.vehicle_unit_id));
+        }
       }
     }
 
@@ -316,35 +338,48 @@ async function fetchContentFromSupabase(): Promise<Partial<Content> | null> {
           if (!u.current_branch_id) continue;
           const entry = counts.get(u.current_branch_id) || { total: 0, available: 0 };
           entry.total += 1;
-          if (u.status === "available" && !branchBlockedMap.get(u.current_branch_id)) entry.available += 1;
+          const isUnitBooked = bookedUnitIds.has(Number(u.id));
+          if (u.status === "available" && !isUnitBooked && !branchBlockedMap.get(u.current_branch_id)) entry.available += 1;
           counts.set(u.current_branch_id, entry);
         }
         for (const [bId, stats] of counts.entries()) {
           const bName = branchNameMap.get(bId) || `Branch ${bId}`;
           const isBranchBlocked = Boolean(branchBlockedMap.get(bId));
+          const branchHoldsWithoutUnit = Math.max(
+            0,
+            (holdsByVehicleAndBranch.get(`${v.id}_${bId}`) ?? 0) -
+              vUnits.filter((u) => u.current_branch_id === bId && bookedUnitIds.has(Number(u.id))).length
+          );
+          const unassignedModelHolds = Math.max(0, (holdsByVehicle.get(v.id) ?? 0) - bookedUnitIds.size);
+          const effectiveHolds = branchHoldsWithoutUnit + (counts.size === 1 ? unassignedModelHolds : 0);
+          const branchAvailable = isVehicleUnavailable || isBranchBlocked ? 0 : Math.max(0, stats.available - effectiveHolds);
           branchDist.push({
             branch_id: bId,
             branch_name: bName,
             total_units: stats.total,
-            available_units: isVehicleUnavailable || isBranchBlocked ? 0 : Math.max(0, stats.available),
+            available_units: branchAvailable,
           });
         }
       } else if (v.branch_id) {
         const bName = branchNameMap.get(v.branch_id) || branchName || "Main Branch";
         const isBranchBlocked = Boolean(branchBlockedMap.get(v.branch_id));
+        const totalU = v.total_units || 1;
+        const holds = holdsByVehicle.get(v.id) ?? 0;
         branchDist.push({
           branch_id: v.branch_id,
           branch_name: bName,
-          total_units: v.total_units || 1,
-          available_units: isVehicleUnavailable || isBranchBlocked ? 0 : (v.available_units ?? v.total_units ?? 1),
+          total_units: totalU,
+          available_units: isVehicleUnavailable || isBranchBlocked ? 0 : Math.max(0, (v.available_units ?? totalU) - holds),
         });
       }
 
+      const activeUnitsCount = vUnits.length > 0
+        ? vUnits.filter((u) => u.status === "available" && !bookedUnitIds.has(Number(u.id)) && !branchBlockedMap.get(u.current_branch_id || 0)).length
+        : (branchBlockedMap.get(v.branch_id || 0) ? 0 : (v.available_units ?? v.total_units ?? 1));
+
       const totalAvailable = isVehicleUnavailable
         ? 0
-        : (vUnits.length > 0
-            ? Math.max(0, vUnits.filter((u) => u.status === "available" && !branchBlockedMap.get(u.current_branch_id || 0)).length)
-            : (branchBlockedMap.get(v.branch_id || 0) ? 0 : (v.available_units ?? v.total_units ?? 1)));
+        : Math.max(0, activeUnitsCount - (holdsByVehicle.get(v.id) ?? 0));
 
       return {
         ...v,

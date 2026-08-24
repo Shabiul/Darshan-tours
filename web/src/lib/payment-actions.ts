@@ -223,7 +223,7 @@ export async function verifyBookingPayment(input: {
 
       // 4. Cache downloadable Invoice payload in Redis for this session
       try {
-        const { cacheSet } = await import("./redis");
+        const { cacheSet, cacheInvalidatePrefix } = await import("./redis");
         const invoicePayload = {
           bookingNo,
           paymentId: input.paymentId,
@@ -235,6 +235,16 @@ export async function verifyBookingPayment(input: {
         };
         await cacheSet(`session:invoice:${input.paymentId}`, invoicePayload, 86400);
         await cacheSet(`session:invoice:${bookingNo}`, invoicePayload, 86400);
+        await cacheInvalidatePrefix("web:gateway:");
+        await cacheInvalidatePrefix("vehicles:");
+        await cacheInvalidatePrefix("fleet:");
+      } catch {}
+
+      try {
+        const { revalidatePath } = await import("next/cache");
+        revalidatePath("/", "layout");
+        revalidatePath("/vehicles", "page");
+        revalidatePath("/booking", "page");
       } catch {}
 
     } catch (err: any) {

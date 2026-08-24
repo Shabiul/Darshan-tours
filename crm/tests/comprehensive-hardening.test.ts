@@ -503,10 +503,10 @@ test("original vehicle unit distribution preserves exact total fleet counts and 
   const sakleshpuraUnits = DEFAULT_VEHICLE_UNITS.filter((u: any) => u.current_branch_id === 1);
   const hassanUnits = DEFAULT_VEHICLE_UNITS.filter((u: any) => u.current_branch_id === 2);
 
-  // 19 units in Sakleshpura, 13 units in Hassan, 32 total units across 17 catalogue models
+  // 19 units in Sakleshpura, 12 units in Hassan, 31 total units across 17 catalogue models
   assert.equal(sakleshpuraUnits.length, 19);
-  assert.equal(hassanUnits.length, 13);
-  assert.equal(DEFAULT_VEHICLE_UNITS.length, 32);
+  assert.equal(hassanUnits.length, 12);
+  assert.equal(DEFAULT_VEHICLE_UNITS.length, 31);
 
   // All units have valid Karnataka registration numbers (KA ...)
   assert.equal(sakleshpuraUnits.every((u: any) => u.registration_no.startsWith("KA")), true);
@@ -604,7 +604,7 @@ test("blocking a branch marks all allocated units of that branch as blocked and 
   const sakleshpuraUnits = unitsWithStatus.filter((u: any) => u.current_branch_id === 1);
 
   // Every Hassan unit MUST be marked unavailable and branch-blocked (greyed out)
-  assert.equal(hassanUnits.length, 13);
+  assert.equal(hassanUnits.length, 12);
   assert.equal(hassanUnits.every((u: any) => u.isUnavailable === true), true);
   assert.equal(hassanUnits.every((u: any) => u.isBranchBlocked === true), true);
 

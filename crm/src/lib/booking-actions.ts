@@ -218,10 +218,10 @@ export async function getAvailableVehicles(
   if (ids.length === 0) return vehicles;
 
   // One query for every vehicle: per-vehicle counts would be one HTTP round trip each.
-  const clashes = await sbSelect<{ vehicle_id: number }>(
+  const clashes = await sbSelect<{ vehicle_id: number; branch_id: number | null }>(
     "bookings",
-    `select=vehicle_id&vehicle_id=in.(${ids.join(",")})` +
-      `&status=not.in.${encodeURIComponent('("Cancelled","Completed","Draft","Rejected")')}` +
+    `select=vehicle_id,branch_id&vehicle_id=in.(${ids.join(",")})` +
+      `&status=not.in.${encodeURIComponent('("Cancelled","Completed","Rejected")')}` +
       `&return_at=gt.${encodeURIComponent(pickupAt)}&pickup_at=lt.${encodeURIComponent(returnAt)}`
   );
   // A failed availability read must not read as "everything is free".
@@ -229,12 +229,23 @@ export async function getAvailableVehicles(
 
   const taken = new Map<number, number>();
   for (const row of clashes.data) {
+    if (targetBranchId && row.branch_id && Number(row.branch_id) !== targetBranchId) {
+      continue;
+    }
     const key = Number(row.vehicle_id);
     taken.set(key, (taken.get(key) ?? 0) + 1);
   }
 
   return vehicles
-    .map((v) => ({ ...v, available_units: Math.max(0, num(v.available_units ?? v.total_units, 1) - (taken.get(Number(v.id)) ?? 0)) }))
+    .map((v) => {
+      const match = targetBranchId ? v.branch_distribution?.find((bd) => bd.branch_id === targetBranchId) : null;
+      const baseUnits = match ? (match.available_units !== undefined ? match.available_units : match.total_units) : num(v.available_units ?? v.total_units, 1);
+      const remaining = Math.max(0, baseUnits - (taken.get(Number(v.id)) ?? 0));
+      return {
+        ...v,
+        available_units: remaining,
+      };
+    })
     .filter((v) => (v.available_units ?? 0) > 0 && v.status === "available" && num(v.active, 1) === 1);
 }
 

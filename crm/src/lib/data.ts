@@ -155,6 +155,8 @@ const DEFAULT_SLUG_PHOTOS: Record<string, string> = {
 /** A booking in one of these states is holding a unit, so it reduces availability. */
 const HOLDING_STATUSES = [
   "Confirmed",
+  "Payment received",
+  "Pending payment",
   "Vehicle handed over",
   "Active rental",
   "Pending verification",
@@ -246,9 +248,8 @@ export const DEFAULT_VEHICLE_UNITS: VehicleUnit[] = [
   { id: 1001, vehicle_id: 10, unit_identifier: "SHINE-001", registration_no: "KA 13 D 6729", status: "available", current_branch_id: 1, current_branch_name: "Sakleshpura Branch", vehicle_name: "Honda Shine 125", vehicle_brand: "Honda", vehicle_model: "Shine", active: 1, notes: "Shine Unit 1", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" },
   { id: 1002, vehicle_id: 10, unit_identifier: "SHINE-002", registration_no: "KA 13 D 9770", status: "available", current_branch_id: 2, current_branch_name: "Hassan Branch", vehicle_name: "Honda Shine 125", vehicle_brand: "Honda", vehicle_model: "Shine", active: 1, notes: "Shine Unit 2", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" },
 
-  // 11. Maruti Baleno (Cars) — 2 units: 1 Sakleshpura, 1 Hassan
+  // 11. Maruti Baleno (Cars) — 1 unit: 1 Sakleshpura, 0 Hassan
   { id: 1101, vehicle_id: 11, unit_identifier: "BALENO-001", registration_no: "KA 13 MA 0550", status: "available", current_branch_id: 1, current_branch_name: "Sakleshpura Branch", vehicle_name: "Maruti Baleno", vehicle_brand: "Maruti Suzuki", vehicle_model: "Baleno", active: 1, notes: "Baleno Manual", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" },
-  { id: 1102, vehicle_id: 11, unit_identifier: "BALENO-002", registration_no: "KA 18 MB 6673", status: "available", current_branch_id: 2, current_branch_name: "Hassan Branch", vehicle_name: "Maruti Baleno", vehicle_brand: "Maruti Suzuki", vehicle_model: "Baleno", active: 1, notes: "Baleno Automatic", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" },
 
   // 12. Maruti Dzire (Cars) — 1 unit: 1 Sakleshpura, 0 Hassan
   { id: 1301, vehicle_id: 13, unit_identifier: "DZIRE-001", registration_no: "KA 18 O 3985", status: "available", current_branch_id: 1, current_branch_name: "Sakleshpura Branch", vehicle_name: "Maruti Dzire", vehicle_brand: "Maruti Suzuki", vehicle_model: "Dzire", active: 1, notes: "Dzire Unit 1", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" },
@@ -323,8 +324,8 @@ export const DEFAULT_VEHICLES_ROSTER: Vehicle[] = [
 
   // Cars (Category 1) — Exact original counts
   {
-    id: 11, slug: "maruti-baleno-manual", name: "Maruti Suzuki Baleno", brand: "Maruti Suzuki", model: "Baleno", year: 2023, category_id: 1, category_name: "Cars", category_kind: "car", category_slug: "cars", branch_id: 1, branch_name: "Sakleshpura Branch", registration_no: "KA 13 MA 0550", cc: 1197, fuel_type: "Petrol", transmission: "Manual", seats: 5, mileage: "21 km/l", included_km: 300, extra_km_rate: 8, rate_12h: 2000, rate_24h: 3500, hourly_rate: 200, weekend_rate_24h: 3550, deposit: 2000, late_fee_per_hour: 150, total_units: 2, available_units: 2, description: "Comfortable premium hatchback.", terms: null, status: "available", active: 1, photos: ["/vehicles/baleno-manual.avif"], primary_photo: "/vehicles/baleno-manual.avif",
-    branch_distribution: [{ branch_id: 1, branch_name: "Sakleshpura Branch", total_units: 1, available_units: 1 }, { branch_id: 2, branch_name: "Hassan Branch", total_units: 1, available_units: 1 }]
+    id: 11, slug: "maruti-baleno-manual", name: "Maruti Suzuki Baleno", brand: "Maruti Suzuki", model: "Baleno", year: 2023, category_id: 1, category_name: "Cars", category_kind: "car", category_slug: "cars", branch_id: 1, branch_name: "Sakleshpura Branch", registration_no: "KA 13 MA 0550", cc: 1197, fuel_type: "Petrol", transmission: "Manual", seats: 5, mileage: "21 km/l", included_km: 300, extra_km_rate: 8, rate_12h: 2000, rate_24h: 3500, hourly_rate: 200, weekend_rate_24h: 3550, deposit: 2000, late_fee_per_hour: 150, total_units: 1, available_units: 1, description: "Comfortable premium hatchback.", terms: null, status: "available", active: 1, photos: ["/vehicles/baleno-manual.avif"], primary_photo: "/vehicles/baleno-manual.avif",
+    branch_distribution: [{ branch_id: 1, branch_name: "Sakleshpura Branch", total_units: 1, available_units: 1 }, { branch_id: 2, branch_name: "Hassan Branch", total_units: 0, available_units: 0 }]
   },
   {
     id: 13, slug: "maruti-dzire", name: "Maruti Dzire", brand: "Maruti Suzuki", model: "Dzire", year: 2023, category_id: 1, category_name: "Cars", category_kind: "car", category_slug: "cars", branch_id: 1, branch_name: "Sakleshpura Branch", registration_no: "KA 18 O 3985", cc: 1197, fuel_type: "Petrol", transmission: "Manual", seats: 5, mileage: "23 km/l", included_km: 300, extra_km_rate: 8, rate_12h: 2000, rate_24h: 3500, hourly_rate: 200, weekend_rate_24h: 3550, deposit: 2000, late_fee_per_hour: 150, total_units: 1, available_units: 1, description: "Fuel-efficient compact sedan.", terms: null, status: "available", active: 1, photos: ["/vehicles/maruti-dzire.avif"], primary_photo: "/vehicles/maruti-dzire.avif",
@@ -372,9 +373,9 @@ async function hydrateVehicles(rows: RawVehicle[]): Promise<Vehicle[]> {
       "vehicle_photos",
       `select=vehicle_id,url&vehicle_id=${idPredicate}&order=is_primary.desc,id.asc`
     ),
-    sbSelect<{ vehicle_id: number }>(
+    sbSelect<{ vehicle_id: number; branch_id: number | null; vehicle_unit_id: number | null }>(
       "bookings",
-      `select=vehicle_id&vehicle_id=${idPredicate}&status=${inList(HOLDING_STATUSES)}&return_at=gte.${encodeURIComponent(nowIso)}`
+      `select=vehicle_id,branch_id,vehicle_unit_id&vehicle_id=${idPredicate}&status=${inList(HOLDING_STATUSES)}&return_at=gte.${encodeURIComponent(nowIso)}`
     ),
     sbSelect<{ id: number; vehicle_id: number; current_branch_id: number | null; status: string; registration_no?: string; unit_identifier?: string }>(
       "vehicle_units",
@@ -406,10 +407,21 @@ async function hydrateVehicles(rows: RawVehicle[]): Promise<Vehicle[]> {
   }
 
   const holdsByVehicle = new Map<number, number>();
+  const holdsByVehicleAndBranch = new Map<string, number>();
+  const bookedUnitIds = new Set<number>();
+
   if (holdsRes.ok && holdsRes.data) {
     for (const hold of holdsRes.data) {
-      const key = Number(hold.vehicle_id);
-      holdsByVehicle.set(key, (holdsByVehicle.get(key) ?? 0) + 1);
+      const vKey = Number(hold.vehicle_id);
+      holdsByVehicle.set(vKey, (holdsByVehicle.get(vKey) ?? 0) + 1);
+
+      if (hold.branch_id) {
+        const vbKey = `${vKey}_${hold.branch_id}`;
+        holdsByVehicleAndBranch.set(vbKey, (holdsByVehicleAndBranch.get(vbKey) ?? 0) + 1);
+      }
+      if (hold.vehicle_unit_id) {
+        bookedUnitIds.add(Number(hold.vehicle_unit_id));
+      }
     }
   }
 
@@ -464,7 +476,7 @@ async function hydrateVehicles(rows: RawVehicle[]): Promise<Vehicle[]> {
       num(row.active, 1) === 0;
 
     const activeUnits = vUnits.length > 0
-      ? vUnits.filter((u) => u.status === "available" && !branchMap.get(u.current_branch_id || 0)?.blocked).length
+      ? vUnits.filter((u) => u.status === "available" && !bookedUnitIds.has(Number(u.id)) && !branchMap.get(u.current_branch_id || 0)?.blocked).length
       : (branchBlocked ? 0 : totalUnits);
 
     const availableUnits = branchBlocked || isVehicleUnavailable || activeUnits === 0
@@ -489,17 +501,26 @@ async function hydrateVehicles(rows: RawVehicle[]): Promise<Vehicle[]> {
         if (!u.current_branch_id) continue;
         const entry = countsByBranch.get(u.current_branch_id) ?? { total: 0, available: 0 };
         entry.total += 1;
-        if (u.status === "available") entry.available += 1;
+        const isUnitBooked = bookedUnitIds.has(Number(u.id));
+        if (u.status === "available" && !isUnitBooked) entry.available += 1;
         countsByBranch.set(u.current_branch_id, entry);
       }
       for (const [bId, stats] of countsByBranch.entries()) {
         const bInfo = branchMap.get(bId);
         if (bInfo) {
+          const branchHoldsWithoutUnit = Math.max(
+            0,
+            (holdsByVehicleAndBranch.get(`${id}_${bId}`) ?? 0) -
+              vUnits.filter((u) => u.current_branch_id === bId && bookedUnitIds.has(Number(u.id))).length
+          );
+          const unassignedModelHolds = Math.max(0, (holdsByVehicle.get(id) ?? 0) - bookedUnitIds.size);
+          const effectiveHolds = branchHoldsWithoutUnit + (countsByBranch.size === 1 ? unassignedModelHolds : 0);
+          const branchAvailable = isVehicleUnavailable || bInfo.blocked ? 0 : Math.max(0, stats.available - effectiveHolds);
           branchDist.push({
             branch_id: bId,
             branch_name: bInfo.name,
             total_units: stats.total,
-            available_units: isVehicleUnavailable || bInfo.blocked ? 0 : Math.max(0, stats.available),
+            available_units: branchAvailable,
           });
         }
       }

@@ -180,12 +180,6 @@ export function Header({ info }: { info: Record<string, unknown> }) {
         </nav>
 
         <div className="hidden items-center gap-3 lg:flex">
-          <Link
-            href="/customer/login"
-            className={`text-sm font-medium transition-colors duration-300 ${isScrolled ? "text-ink-800 hover:text-brand-600" : "text-white/85 hover:text-white"}`}
-          >
-            My booking
-          </Link>
           <Link href="/booking" className="btn-primary btn-shine">
             Book now
           </Link>
@@ -234,9 +228,6 @@ export function Header({ info }: { info: Record<string, unknown> }) {
                 )}
               </div>
             ))}
-            <Link href="/customer/login" onClick={() => setOpen(false)} className="rounded-xl px-4 py-3 text-base font-medium text-ink-900 transition hover:bg-ink-950/5">
-              My booking
-            </Link>
             <Link href="/booking" onClick={() => setOpen(false)} className="btn-primary mt-3 w-full text-center">
               Book now
             </Link>

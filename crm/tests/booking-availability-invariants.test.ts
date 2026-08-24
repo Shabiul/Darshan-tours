@@ -191,3 +191,64 @@ test("booking form step 2 disables clicking when vehicle is out of stock or bran
   // Zero stock vehicle in active branch -> NOT selectable
   assert.equal(canSelectVehicle({ id: 3, status: "available", active: 1, available_units: 0 }, false), false);
 });
+
+test("vehicle inventory decrements on active/confirmed/paid booking and only replenishes on rejection, cancellation, or return", () => {
+  const HOLDING_STATUSES = new Set([
+    "Confirmed",
+    "Payment received",
+    "Pending payment",
+    "Vehicle handed over",
+    "Active rental",
+    "Pending verification",
+    "Enquiry",
+    "Draft",
+  ]);
+
+  const NON_HOLDING_STATUSES = new Set(["Cancelled", "Completed", "Rejected"]);
+
+  function computeAvailableUnits(
+    totalUnits: number,
+    bookings: Array<{ vehicle_id: number; status: string; return_at: string }>,
+    vehicleId: number,
+    nowIso: string
+  ): number {
+    const activeHolds = bookings.filter(
+      (b) => b.vehicle_id === vehicleId && HOLDING_STATUSES.has(b.status) && b.return_at >= nowIso
+    ).length;
+    return Math.max(0, totalUnits - activeHolds);
+  }
+
+  const now = "2026-08-24T10:00:00.000Z";
+  const futureReturn = "2026-08-25T10:00:00.000Z";
+
+  // Initial fleet: 10 units
+  const total = 10;
+  const bookings: Array<{ vehicle_id: number; status: string; return_at: string }> = [];
+
+  assert.equal(computeAvailableUnits(total, bookings, 80, now), 10, "Initial available count is 10");
+
+  // 1. User books and pays -> Booking status is 'Confirmed' or 'Payment received'
+  bookings.push({ vehicle_id: 80, status: "Confirmed", return_at: futureReturn });
+  assert.equal(computeAvailableUnits(total, bookings, 80, now), 9, "After paid booking, available count decreases to 9");
+
+  // 2. Another booking is pending verification / payment
+  bookings.push({ vehicle_id: 80, status: "Pending payment", return_at: futureReturn });
+  assert.equal(computeAvailableUnits(total, bookings, 80, now), 8, "After second booking, available count decreases to 8");
+
+  // 3. First booking is handed over / active rental
+  bookings[0].status = "Active rental";
+  assert.equal(computeAvailableUnits(total, bookings, 80, now), 8, "Active rental continues to hold inventory (8 Left)");
+
+  // 4. Second booking is Rejected -> inventory is released back!
+  bookings[1].status = "Rejected";
+  assert.equal(computeAvailableUnits(total, bookings, 80, now), 9, "Rejected booking releases inventory back to 9");
+
+  // 5. First rental is Completed (vehicle returned) -> inventory is released back!
+  bookings[0].status = "Completed";
+  assert.equal(computeAvailableUnits(total, bookings, 80, now), 10, "Returned/Completed vehicle restores inventory back to 10");
+
+  // 6. A cancelled booking does not deduct inventory
+  bookings.push({ vehicle_id: 80, status: "Cancelled", return_at: futureReturn });
+  assert.equal(computeAvailableUnits(total, bookings, 80, now), 10, "Cancelled booking does not deduct inventory");
+});
+

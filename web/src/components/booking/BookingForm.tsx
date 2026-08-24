@@ -347,6 +347,7 @@ export function BookingForm({
 
   // Autosave (localStorage instantly, server debounced) whenever key fields change.
   useEffect(() => {
+    if (result || step === 6) return;
     localStorage.setItem("darshh_booking_draft", JSON.stringify({ categoryKind, location, pickupDate, pickupTime, returnDate, returnTime, passengers, vehicleId, contact }));
     if (!contact.name && !contact.phone && !vehicleId) return;
     setSaveStatus("saving");
@@ -366,7 +367,7 @@ export function BookingForm({
     }, 1600);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [categoryKind, location, pickupDate, pickupTime, returnDate, returnTime, passengers, vehicleId, contact, step]);
+  }, [categoryKind, location, pickupDate, pickupTime, returnDate, returnTime, passengers, vehicleId, contact, step, result]);
 
   // Load available vehicles for step 2 vehicle picker.
   const vehiclesFetchedRef = useRef(false);
@@ -424,35 +425,33 @@ export function BookingForm({
 
   // Guard against direct deep links or skipped steps when a vehicle is unavailable or branch is blocked
   useEffect(() => {
-    if (step >= 3) {
-      if (isSelectedBranchBlocked) {
-        setStep(1);
+    // Once booking is submitted, in payment step, or in submission transit, never kick back
+    if (result || submitting || step < 3 || step > 5) return;
+
+    if (isSelectedBranchBlocked) {
+      setStep(1);
+      setErrors((prev) => ({
+        ...prev,
+        location: `Bookings are temporarily suspended at ${activeBranch?.name || "this branch"}. Please choose another branch.`,
+      }));
+    } else if (selectedVehicle) {
+      const isVehicleUnavailable =
+        selectedVehicle.status === "unavailable" ||
+        selectedVehicle.status === "blocked" ||
+        selectedVehicle.status === "maintenance" ||
+        selectedVehicle.status === "inactive" ||
+        selectedVehicle.status === "archived" ||
+        Number(selectedVehicle.active) === 0;
+
+      if (isVehicleUnavailable) {
+        setStep(2);
         setErrors((prev) => ({
           ...prev,
-          location: `Bookings are temporarily suspended at ${activeBranch?.name || "this branch"}. Please choose another branch.`,
+          vehicle: "The selected vehicle is currently unavailable. Please choose another vehicle.",
         }));
-      } else if (selectedVehicle) {
-        const isVehicleUnavailable =
-          selectedVehicle.status === "unavailable" ||
-          selectedVehicle.status === "blocked" ||
-          selectedVehicle.status === "maintenance" ||
-          selectedVehicle.status === "inactive" ||
-          selectedVehicle.status === "archived" ||
-          Number(selectedVehicle.active) === 0;
-
-        if (
-          isVehicleUnavailable ||
-          (selectedVehicle.available_units !== undefined && selectedVehicle.available_units <= 0)
-        ) {
-          setStep(2);
-          setErrors((prev) => ({
-            ...prev,
-            vehicle: "The selected vehicle is currently unavailable. Please choose another vehicle.",
-          }));
-        }
       }
     }
-  }, [step, isSelectedBranchBlocked, selectedVehicle, activeBranch]);
+  }, [step, isSelectedBranchBlocked, selectedVehicle, activeBranch, result, submitting]);
 
   function validateStep(n: number): boolean {
     const e: Record<string, string> = {};

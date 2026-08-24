@@ -310,6 +310,21 @@ export async function verifyBookingPayment(input: {
     }
   }
 
+  try {
+    const { cacheInvalidatePrefix } = await import("./redis");
+    await cacheInvalidatePrefix("web:gateway:");
+    await cacheInvalidatePrefix("vehicles:");
+    await cacheInvalidatePrefix("fleet:");
+  } catch {}
+
+  try {
+    const { revalidatePath } = await import("next/cache");
+    revalidatePath("/dashboard", "layout");
+    revalidatePath("/dashboard/bookings", "page");
+    revalidatePath("/dashboard/vehicles", "page");
+    revalidatePath("/dashboard/allocations", "page");
+  } catch {}
+
   return { ok: true, bookingNo };
 }
 

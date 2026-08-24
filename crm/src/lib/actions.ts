@@ -1107,6 +1107,13 @@ async function setBookingStatus(
   });
   if (!logged.ok) return fail(logged, "Recording the booking history");
 
+  try {
+    const { cacheInvalidatePrefix } = await import("./redis");
+    await cacheInvalidatePrefix("web:gateway:");
+    await cacheInvalidatePrefix("vehicles:");
+    await cacheInvalidatePrefix("fleet:");
+  } catch {}
+
   return null;
 }
 

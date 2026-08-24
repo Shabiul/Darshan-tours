@@ -12,7 +12,7 @@ const MIME: Record<string, string> = { jpeg: "image/jpeg", jpg: "image/jpeg", pn
 function uploadsDir(): string {
   if (!process.env.VERCEL) {
     try {
-      const localDir = path.join(process.cwd(), "data", "uploads");
+      const localDir = path.resolve(process.cwd(), "data", "uploads");
       fs.mkdirSync(localDir, { recursive: true });
       fs.accessSync(localDir, fs.constants.W_OK);
       return localDir;
@@ -20,7 +20,7 @@ function uploadsDir(): string {
       // fall through to tmp
     }
   }
-  const tmpDir = path.join(os.tmpdir(), "darshan-crm-data", "uploads");
+  const tmpDir = path.resolve(os.tmpdir(), "darshan-crm-data", "uploads");
   fs.mkdirSync(tmpDir, { recursive: true });
   return tmpDir;
 }
@@ -57,7 +57,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ name
   }
 
   const uploadDir = uploadsDir();
-  const filePath = path.join(/*turbopackIgnore: true*/ uploadDir, name);
+  const filePath = path.resolve(uploadDir, name);
   if (!filePath.startsWith(uploadDir) || !fs.existsSync(filePath)) return NextResponse.json({ error: "Not found." }, { status: 404 });
   const ext = name.split(".").pop() ?? "";
   const buf = fs.readFileSync(filePath);
