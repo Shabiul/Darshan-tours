@@ -36,7 +36,7 @@ export function Footer({ info }: { info: Record<string, unknown> }) {
             <li><Link href="/customer/login" className="text-ink-200 transition hover:text-brand-400">Track your booking</Link></li>
             <li><Link href="/privacy" className="text-ink-200 transition hover:text-brand-400">Privacy policy</Link></li>
             <li><Link href="/terms" className="text-ink-200 transition hover:text-brand-400">Terms &amp; conditions</Link></li>
-            <li><Link href="/refunds" className="text-ink-200 transition hover:text-brand-400">Cancellation &amp; refunds</Link></li>
+            <li><Link href="/refunds" className="text-ink-200 transition hover:text-brand-400">Refund policy</Link></li>
           </ul>
         </div>
         <div>
@@ -58,6 +58,12 @@ export function Footer({ info }: { info: Record<string, unknown> }) {
         <div className="container-x flex flex-col items-center justify-between gap-2 py-5 text-xs text-ink-400 sm:flex-row">
           <p>© {new Date().getFullYear()} {name}. All rights reserved.</p>
           <p>No bargaining · Fixed pricing · Well maintained fleet</p>
+        </div>
+        <div className="container-x pb-5 text-center text-[16px] text-ink-400">
+          Designed and developed by{" "}
+          <a href="https://naazailabs.com" target="_blank" rel="noopener noreferrer" className="font-semibold text-ink-300 hover:text-brand-400">
+            Naaz AI Labs
+          </a>
         </div>
       </div>
     </footer>
