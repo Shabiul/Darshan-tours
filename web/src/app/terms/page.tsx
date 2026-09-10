@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { businessInfo, rentalRules } from "@/lib/settings";
 import { formatINR } from "@/lib/utils";
+import { breadcrumbJsonLd, jsonLdGraph } from "@/lib/seo";
 
 export const metadata: Metadata = {
   title: "Terms & Conditions",
   description: "Terms and conditions governing self-drive vehicle rentals with Darshh Holiday.",
+  alternates: { canonical: "/terms" },
 };
 
 export default async function TermsPage() {
@@ -13,6 +15,12 @@ export default async function TermsPage() {
   const name = String(info.name ?? "Darshh Holiday");
   return (
     <article className="container-x max-w-3xl py-14">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(jsonLdGraph(breadcrumbJsonLd([{ name: "Terms & Conditions", path: "/terms" }]))),
+        }}
+      />
       <nav aria-label="Breadcrumb" className="text-xs text-ink-400">
         <ol className="flex gap-2">
           <li><Link href="/" className="hover:text-brand-700">Home</Link></li>

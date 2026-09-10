@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { businessInfo } from "@/lib/settings";
+import { breadcrumbJsonLd, jsonLdGraph } from "@/lib/seo";
 
 export const metadata: Metadata = {
   title: "Refund Policy",
   description: "Security deposit and refund terms for vehicles booked with Darshh Holiday.",
+  alternates: { canonical: "/refunds" },
 };
 
 export default async function RefundsPage() {
@@ -12,6 +14,12 @@ export default async function RefundsPage() {
   const name = String(info.name ?? "Darshh Holiday");
   return (
     <article className="container-x max-w-3xl py-14">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(jsonLdGraph(breadcrumbJsonLd([{ name: "Refund Policy", path: "/refunds" }]))),
+        }}
+      />
       <nav aria-label="Breadcrumb" className="text-xs text-ink-400">
         <ol className="flex gap-2">
           <li><Link href="/" className="hover:text-brand-700">Home</Link></li>

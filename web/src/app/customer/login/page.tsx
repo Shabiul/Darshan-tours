@@ -4,6 +4,7 @@ import { CustomerLogin } from "@/components/customer/CustomerLogin";
 export const metadata: Metadata = {
   title: "Track Your Enquiry",
   description: "Log in with your phone number or email to view your enquiry status and quotation.",
+  robots: { index: false, follow: false },
 };
 
 export default function CustomerLoginPage() {

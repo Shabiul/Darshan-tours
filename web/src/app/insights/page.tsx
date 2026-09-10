@@ -4,16 +4,24 @@ import { getBlogPosts, getBlogPost } from "@/lib/data";
 import { notFound } from "next/navigation";
 import { SectionHeading } from "@/components/ui";
 import { formatDate } from "@/lib/utils";
+import { breadcrumbJsonLd, jsonLdGraph } from "@/lib/seo";
 
 export const metadata: Metadata = {
   title: "Insights & Rental Guides",
   description: "Practical guides on self-drive road trips, vehicle care and rental planning from Darshh Holiday.",
+  alternates: { canonical: "/insights" },
 };
 
 export default async function InsightsPage() {
   const posts = await getBlogPosts();
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(jsonLdGraph(breadcrumbJsonLd([{ name: "Insights", path: "/insights" }]))),
+        }}
+      />
       <section className="border-b border-ink-100 bg-brand-600/5">
         <div className="container-x py-16 sm:py-20">
           <SectionHeading

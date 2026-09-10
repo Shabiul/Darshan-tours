@@ -9,6 +9,7 @@ import { Reveal } from "@/components/ui/Reveal";
 import { isWeekend } from "@/lib/pricing";
 import { BookingBar } from "@/components/BookingBar";
 import { getCachedVehicleSearchPrice } from "@/lib/search-pricing";
+import { absoluteUrl, breadcrumbJsonLd, jsonLdGraph, BUSINESS_ID } from "@/lib/seo";
 
 export const metadata: Metadata = {
   title: "Browse Vehicles",
@@ -116,8 +117,50 @@ export default async function VehiclesPage(
     return `/vehicles${str ? `?${str}` : ""}`;
   }
 
+  // An enumerable fleet. This is the single highest-value piece of structured data on
+  // the site for answer engines: it turns "what bikes can I rent in Sakleshpura and
+  // what do they cost" from something a model has to infer out of rendered HTML into a
+  // list it can read, quote and cite directly, with each entry pointing at the vehicle
+  // page that can be linked in the answer. Every field mirrors what is already visible
+  // on the card — no new claims, no prices that differ from the page.
+  const itemListJsonLd = {
+    "@type": "ItemList",
+    name: "Self-drive vehicle fleet — Hassan & Sakleshpura",
+    numberOfItems: vehicles.length,
+    itemListElement: vehicles.map((v, i) => ({
+      "@type": "ListItem",
+      position: i + 1,
+      item: {
+        "@type": "Product",
+        "@id": absoluteUrl(`/vehicles/${v.slug}#product`),
+        name: v.name,
+        url: absoluteUrl(`/vehicles/${v.slug}`),
+        ...(v.primary_photo ? { image: absoluteUrl(String(v.primary_photo)) } : {}),
+        category: v.category_name ?? undefined,
+        brand: v.brand ? { "@type": "Brand", name: String(v.brand) } : undefined,
+        offers: {
+          "@type": "Offer",
+          price: Number(v.rate_24h ?? 0),
+          priceCurrency: "INR",
+          availability:
+            (v.available_units ?? 0) > 0
+              ? "https://schema.org/InStock"
+              : "https://schema.org/OutOfStock",
+          url: absoluteUrl(`/vehicles/${v.slug}`),
+          seller: { "@id": BUSINESS_ID },
+        },
+      },
+    })),
+  };
+
+  const vehiclesGraph = jsonLdGraph(
+    itemListJsonLd,
+    breadcrumbJsonLd([{ name: "Vehicles", path: "/vehicles" }])
+  );
+
   return (
     <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(vehiclesGraph) }} />
       <section className="grain relative -mt-20 sm:-mt-24 overflow-hidden border-b border-ink-100 bg-ink-950 pt-20 sm:pt-24 text-white">
         <Image src="/vehicles/mahindra-thar.avif" alt="" aria-hidden fill priority className="object-cover object-center" sizes="100vw" />
         <video

@@ -649,7 +649,10 @@ export async function getBlogPosts() {
 
 export async function getBlogPost(slug: string): Promise<Record<string, unknown> | null> {
   const res = await gatewayPost<{ post: Record<string, unknown> | null }>("/api/gateway/v1/content", { op: "blogPost", slug });
-  if (res?.post) return res.post;
+  // Require `title`, not just a truthy object: a gateway that returns a malformed or
+  // empty post would otherwise render a page whose <h1> and <title> are the literal
+  // string "undefined". Falling through to the static copy is always the better page.
+  if (res?.post?.title) return res.post;
   return FALLBACK_BLOG_POSTS.find((p) => p.slug === slug) ?? null;
 }
 

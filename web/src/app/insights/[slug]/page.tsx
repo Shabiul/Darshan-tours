@@ -3,14 +3,27 @@ import Link from "next/link";
 import { getBlogPost } from "@/lib/data";
 import { notFound } from "next/navigation";
 import { formatDate } from "@/lib/utils";
+import { absoluteUrl, breadcrumbJsonLd, jsonLdGraph, ORG_ID, WEBSITE_ID } from "@/lib/seo";
 
 export async function generateMetadata(props: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const params = await props.params;
   const post = await getBlogPost(params.slug);
   if (!post) return {};
+  const published = post.created_at ? new Date(String(post.created_at)) : null;
+  const hasDate = published && !Number.isNaN(published.getTime());
   return {
     title: String(post.title),
     description: String(post.excerpt ?? ""),
+    alternates: { canonical: `/insights/${String(post.slug ?? params.slug)}` },
+    openGraph: {
+      title: String(post.title),
+      description: String(post.excerpt ?? ""),
+      type: "article",
+      url: `/insights/${String(post.slug ?? params.slug)}`,
+      ...(hasDate ? { publishedTime: published!.toISOString() } : {}),
+      ...(post.author ? { authors: [String(post.author)] } : {}),
+      ...(post.cover ? { images: [{ url: String(post.cover) }] } : {}),
+    },
   };
 }
 
@@ -19,8 +32,42 @@ export default async function BlogPostPage(props: { params: Promise<{ slug: stri
   const post = await getBlogPost(params.slug);
   if (!post) notFound();
 
+  // BlogPosting is what makes an article eligible for Article rich results, and it is
+  // the format answer engines lean on hardest when deciding whether a page is a
+  // citable source (named author, publish date, publisher) rather than anonymous copy.
+  // The visible breadcrumb below is mirrored as BreadcrumbList so the same trail Google
+  // shows in the result matches what a user actually sees on the page.
+  const published = post.created_at ? new Date(String(post.created_at)) : null;
+  const postGraph = jsonLdGraph(
+    {
+      "@type": "BlogPosting",
+      "@id": absoluteUrl(`/insights/${String(post.slug)}#article`),
+      mainEntityOfPage: { "@type": "WebPage", "@id": absoluteUrl(`/insights/${String(post.slug)}`) },
+      headline: String(post.title).slice(0, 110),
+      ...(post.excerpt ? { description: String(post.excerpt) } : {}),
+      // Article rich results need an image; posts without a cover fall back to the same
+      // logo the site already serves as its default OG image, so the node is never
+      // incomplete just because an author skipped the cover field.
+      image: absoluteUrl(String(post.cover ?? "/logo.jpeg")),
+      ...(published && !Number.isNaN(published.getTime())
+        ? { datePublished: published.toISOString(), dateModified: published.toISOString() }
+        : {}),
+      author: post.author
+        ? { "@type": "Person", name: String(post.author) }
+        : { "@id": ORG_ID },
+      publisher: { "@id": ORG_ID },
+      inLanguage: "en-IN",
+      isPartOf: { "@id": WEBSITE_ID },
+    },
+    breadcrumbJsonLd([
+      { name: "Insights", path: "/insights" },
+      { name: String(post.title), path: `/insights/${String(post.slug)}` },
+    ])
+  );
+
   return (
     <article className="container-x max-w-3xl py-14">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(postGraph) }} />
       <nav aria-label="Breadcrumb" className="text-xs text-ink-400">
         <ol className="flex gap-2">
           <li><Link href="/" className="hover:text-brand-700">Home</Link></li>

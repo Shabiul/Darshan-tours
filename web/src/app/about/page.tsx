@@ -5,10 +5,12 @@ import { businessInfo } from "@/lib/settings";
 import { getGallery, getStaff, getTestimonials } from "@/lib/data";
 import { SectionHeading, Stars, Avatar } from "@/components/ui";
 import { AnimatedCounter } from "@/components/ui/AnimatedCounter";
+import { breadcrumbJsonLd, jsonLdGraph } from "@/lib/seo";
 
 export const metadata: Metadata = {
   title: "About Us",
   description: "Darshh Holiday — a Hassan district self-drive rental operator serving Hassan and Sakleshpura, built on fixed pricing, well-maintained vehicles and no bargaining.",
+  alternates: { canonical: "/about" },
 };
 
 const HERO_VIDEO =
@@ -48,6 +50,12 @@ export default async function AboutPage() {
 
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(jsonLdGraph(breadcrumbJsonLd([{ name: "About", path: "/about" }]))),
+        }}
+      />
       {/* Hero */}
       <section className="relative isolate -mt-20 sm:-mt-24 overflow-hidden bg-ink-950 pt-20 sm:pt-24 text-white">
         <video

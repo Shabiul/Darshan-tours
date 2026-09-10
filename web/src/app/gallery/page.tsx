@@ -5,10 +5,12 @@ import { getGallery, getVehicles, getVehicleCategories, getTestimonials } from "
 import { OurStories } from "@/components/OurStories";
 import { BookingBar } from "@/components/BookingBar";
 import { Stars } from "@/components/ui";
+import { breadcrumbJsonLd, jsonLdGraph } from "@/lib/seo";
 
 export const metadata: Metadata = {
   title: "Gallery & Stories — Rides We've Delivered",
   description: "Explore real road trips, coffee estate escapes, mountain trails, and photo memories from Darshh Holiday rentals.",
+  alternates: { canonical: "/gallery" },
 };
 
 const HERO_IMG = "/hero-poster.jpg";
@@ -37,6 +39,12 @@ export default async function GalleryPage() {
 
   return (
     <div className="bg-white text-ink-900">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(jsonLdGraph(breadcrumbJsonLd([{ name: "Gallery", path: "/gallery" }]))),
+        }}
+      />
       {/* 1. Full Screen Hero Section with Vivid Background Video */}
       <section className="relative flex min-h-screen flex-col justify-center overflow-hidden bg-ink-950 -mt-20 sm:-mt-24 pt-20 sm:pt-24 text-white">
         <Image src={HERO_IMG} alt="" aria-hidden fill priority className="object-cover" sizes="100vw" />

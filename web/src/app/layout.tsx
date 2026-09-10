@@ -5,6 +5,7 @@ import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { businessInfo } from "@/lib/settings";
 import { getBranches } from "@/lib/data";
+import { jsonLdGraph, organizationJsonLd, websiteJsonLd, localBusinessJsonLd } from "@/lib/seo";
 
 // Bauhaus typography: a heavy geometric grotesque for display (Archivo Black)
 // paired with Jost — a revival of 1920s geometric sans faces from the same
@@ -59,14 +60,39 @@ export async function generateMetadata(): Promise<Metadata> {
       description: `Self-drive bike, scooter and car rentals in ${city}. Fixed transparent pricing, no bargaining.`,
       type: "website",
       locale: "en_IN",
+      siteName: name,
+      url: "/",
       images: [{ url: "/logo.jpeg", width: 792, height: 685, alt: name }],
     },
     twitter: {
-      card: "summary",
+      // summary_large_image, not summary: the large card is what actually gets the
+      // click-through on a shared vehicle/booking link.
+      card: "summary_large_image",
       title: `${name} — ${tagline}`,
       description: `Self-drive bike, scooter and car rentals in ${city}. Fixed transparent pricing, no bargaining.`,
       images: ["/logo.jpeg"],
     },
+    // Without max-image-preview:large and max-snippet:-1, Google caps how much of the
+    // page it may show — small thumbnails, truncated snippets, and reduced eligibility
+    // for AI Overviews and Discover, which grade on how much of the answer they are
+    // allowed to surface. These are the defaults every indexable page should carry.
+    robots: {
+      index: true,
+      follow: true,
+      googleBot: {
+        index: true,
+        follow: true,
+        "max-image-preview": "large",
+        "max-snippet": -1,
+        "max-video-preview": -1,
+      },
+    },
+    applicationName: name,
+    authors: [{ name }],
+    creator: name,
+    publisher: name,
+    formatDetection: { telephone: true, address: true, email: true },
+    category: "travel",
     // Geo meta tags for local search relevance (Sakleshpura, Karnataka HQ).
     // These are a minor, mostly-legacy signal — real local ranking comes from the
     // Google Business Profile and the LocalBusiness/AutoRental JSON-LD below, not
@@ -83,28 +109,16 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const [info, branches] = await Promise.all([businessInfo(), getBranches()]);
 
-  const jsonLd = {
-    "@context": "https://schema.org",
-    "@type": "AutoRental",
-    name: String(info.name ?? "Darshh Holiday"),
-    description: "Self-drive bike, scooter and car rentals across Hassan district, Karnataka — fixed transparent pricing, no bargaining.",
-    telephone: String(info.phone ?? ""),
-    email: String(info.email ?? ""),
-    priceRange: "₹₹",
-    areaServed: ["Hassan", "Sakleshpura", "Chikmagalur"],
-    geo: { "@type": "GeoCoordinates", latitude: 12.9585, longitude: 75.7859 },
-    sameAs: [info.social && typeof info.social === "object" ? (info.social as Record<string, unknown>).instagram : undefined].filter(Boolean),
-    location: branches
-      .filter((b) => b.active)
-      .map((b) => ({
-        "@type": "Place",
-        name: b.name,
-        address: b.address
-          ? { "@type": "PostalAddress", streetAddress: b.address, addressLocality: b.city ?? undefined, addressRegion: "Karnataka", addressCountry: "IN" }
-          : undefined,
-        telephone: b.phone ?? undefined,
-      })),
-  };
+  // One @graph for the whole site identity: the Organization, the WebSite (with the
+  // sitelinks SearchAction), the AutoRental business and one node per physical branch,
+  // all cross-referenced by @id so a crawler reads them as one entity rather than four
+  // unrelated businesses. Page-level schema (Product, FAQPage, BlogPosting, ItemList,
+  // BreadcrumbList) is emitted by the individual pages and resolves against these ids.
+  const jsonLd = jsonLdGraph(
+    organizationJsonLd(info),
+    websiteJsonLd(),
+    localBusinessJsonLd(info, branches)
+  );
 
   // suppressHydrationWarning below: browser extensions (screen recorders, translators,
   // etc.) inject attributes onto <html> — e.g. data-scribe-recorder-ready — before React

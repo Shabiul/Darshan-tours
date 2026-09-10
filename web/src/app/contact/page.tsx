@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { businessInfo } from "@/lib/settings";
 import { ContactForm } from "@/components/ContactForm";
+import { breadcrumbJsonLd, jsonLdGraph } from "@/lib/seo";
 
 export const metadata: Metadata = {
   title: "Contact Us",
@@ -48,6 +49,12 @@ export default async function ContactPage() {
   ];
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(jsonLdGraph(breadcrumbJsonLd([{ name: "Contact", path: "/contact" }]))),
+        }}
+      />
       <section className="relative flex min-h-screen flex-col justify-center overflow-hidden bg-ink-950 -mt-20 sm:-mt-24 pt-20 sm:pt-24 text-white">
         <video
           className="hero-video absolute inset-0 h-full w-full object-cover brightness-125 contrast-105 opacity-95"
