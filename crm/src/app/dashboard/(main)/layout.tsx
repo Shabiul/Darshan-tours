@@ -6,6 +6,8 @@ import { SidebarNav, MobileNav } from "@/components/dashboard/NavLinks";
 import { SearchBox, NotificationBell, LogoutButton, LiveIstClock } from "@/components/dashboard/TopBar";
 import { CommandBar } from "@/components/dashboard/CommandBar";
 import { getNotifications } from "@/lib/topbar-actions";
+import { getSetting } from "@/lib/settings";
+import { SystemHealthBanner } from "@/components/dashboard/SystemHealthBanner";
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: "M3 12l9-9 9 9M5 10v10h5v-6h4v6h5V10" },
@@ -36,6 +38,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const user = await getCurrentUser();
   if (!user) redirect("/dashboard/login");
   const { items: notifications, unread } = await getNotifications();
+  // A settings-table hiccup must not take down every dashboard page — the banner is a
+  // nice-to-have warning, not something the whole CRM shell should depend on.
+  const webhookHealth = await getSetting<any>("payment_webhook_health", null).catch(() => null);
 
   const isAdmin = user.role === "admin";
   const navItems = NAV.filter((item) => canAccessModule(user, item.href));
@@ -86,6 +91,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
       {/* Main content column with independent scroll */}
       <div className="flex-1 flex flex-col h-screen max-h-screen min-w-0 overflow-hidden">
+        <SystemHealthBanner webhookHealth={webhookHealth} />
         <header className="shrink-0 sticky top-0 z-30 flex items-center justify-between gap-4 border-b border-ink-100/80 bg-white/80 px-4 py-2.5 backdrop-blur-xl sm:px-6">
           <MobileNav items={navItems} user={plainUser} />
           <div className="hidden flex-1 lg:flex items-center gap-3">

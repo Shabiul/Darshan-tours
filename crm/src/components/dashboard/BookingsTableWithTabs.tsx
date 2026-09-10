@@ -10,6 +10,24 @@ import { BookingReviewModal, type BookingReviewData } from "./BookingReviewModal
 
 type PickupSort = "default" | "asc" | "desc";
 
+/**
+ * Resolve the "Upcoming" toggle and the explicit From/To range into a single pickup-day
+ * window. Both are the same kind of constraint — a floor/ceiling on the IST calendar day
+ * of pickup — so they merge instead of fighting: the floor is whichever is later. That
+ * keeps the toggle's promise ("no pickups earlier than today") true even if staff type a
+ * From date that has already passed. All keys are "YYYY-MM-DD", which compares correctly
+ * as a string and is exactly the value an <input type="date"> gives us.
+ */
+export function pickupWindow(
+  upcomingOnly: boolean,
+  fromDate: string,
+  toDate: string,
+  todayKey: string
+): { floor: string; ceil: string } {
+  const floor = upcomingOnly ? (fromDate > todayKey ? fromDate : todayKey) : fromDate;
+  return { floor, ceil: toDate };
+}
+
 export function BookingsTableWithTabs({
   initialBookings,
   branches = [],
@@ -27,6 +45,9 @@ export function BookingsTableWithTabs({
   // so staff can still sort ascending/descending without the date floor, or combine both.
   const [pickupSort, setPickupSort] = useState<PickupSort>("default");
   const [upcomingOnly, setUpcomingOnly] = useState(false);
+  // Explicit pickup-date range, narrowing the same window "Upcoming" sets. Empty = open end.
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
 
   // Filter Bookings by Tab & Branch
   const branchFilteredList = useMemo(() => {
@@ -93,15 +114,20 @@ export function BookingsTableWithTabs({
       );
     }
 
-    if (upcomingOnly) {
-      const todayKey = istDateKey(new Date());
-      list = list.filter((b) => b.pickup_at && istDateKey(new Date(b.pickup_at)) >= todayKey);
+    const { floor, ceil } = pickupWindow(upcomingOnly, fromDate, toDate, istDateKey(new Date()));
+    if (floor || ceil) {
+      list = list.filter((b) => {
+        if (!b.pickup_at) return false;
+        const key = istDateKey(new Date(b.pickup_at));
+        return (!floor || key >= floor) && (!ceil || key <= ceil);
+      });
     }
 
-    // Upcoming defaults to earliest-pickup-first (today, then tomorrow, ...) unless
+    // Any date window defaults to earliest-pickup-first (today, then tomorrow, ...) unless
     // staff explicitly picked a direction; the direction control also works standalone
-    // without the date floor, for anyone who just wants the full list sorted by pickup.
-    const effectiveSort: PickupSort = pickupSort !== "default" ? pickupSort : upcomingOnly ? "asc" : "default";
+    // without the date window, for anyone who just wants the full list sorted by pickup.
+    const effectiveSort: PickupSort =
+      pickupSort !== "default" ? pickupSort : floor || ceil ? "asc" : "default";
     if (effectiveSort !== "default") {
       const dir = effectiveSort === "asc" ? 1 : -1;
       list = [...list].sort((a, b) => {
@@ -112,7 +138,7 @@ export function BookingsTableWithTabs({
     }
 
     return list;
-  }, [branchFilteredList, activeTab, searchQuery, upcomingOnly, pickupSort]);
+  }, [branchFilteredList, activeTab, searchQuery, upcomingOnly, pickupSort, fromDate, toDate]);
 
   return (
     <div className="space-y-4" suppressHydrationWarning>
@@ -255,6 +281,43 @@ export function BookingsTableWithTabs({
           📅 Upcoming {upcomingOnly ? "✓" : ""}
         </button>
 
+        {/* Pickup-date range. Native date inputs — min/max stop an inverted range being
+            entered at all, and min={todayKey} while Upcoming is on shows the clamp. */}
+        <div className="flex items-center gap-1.5 rounded-xl border border-ink-200 bg-white px-3 py-1.5 shadow-xs">
+          <span className="text-xs text-ink-500">🗓 Pickup:</span>
+          <input
+            type="date"
+            aria-label="Pickup date from"
+            value={fromDate}
+            min={upcomingOnly ? istDateKey(new Date()) : undefined}
+            max={toDate || undefined}
+            onChange={(e) => setFromDate(e.target.value)}
+            className="bg-transparent text-xs font-bold text-ink-800 focus:outline-none cursor-pointer"
+          />
+          <span className="text-xs text-ink-400">→</span>
+          <input
+            type="date"
+            aria-label="Pickup date to"
+            value={toDate}
+            min={fromDate || (upcomingOnly ? istDateKey(new Date()) : undefined)}
+            onChange={(e) => setToDate(e.target.value)}
+            className="bg-transparent text-xs font-bold text-ink-800 focus:outline-none cursor-pointer"
+          />
+          {(fromDate || toDate) && (
+            <button
+              type="button"
+              onClick={() => {
+                setFromDate("");
+                setToDate("");
+              }}
+              className="ml-0.5 text-xs text-ink-400 hover:text-ink-900 cursor-pointer"
+              title="Clear date range"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+
         {/* Quick Search */}
         <div className="relative min-w-[240px] flex-1 sm:max-w-xs">
           <input
@@ -283,7 +346,9 @@ export function BookingsTableWithTabs({
         <div className="card p-10 text-center text-sm text-ink-500 space-y-1">
           <p className="font-semibold">No bookings found</p>
           <p className="text-xs text-ink-400">
-            {searchQuery || selectedBranch !== "all"
+            {fromDate || toDate || upcomingOnly
+              ? "No pickups fall in the selected date range. Clear or widen it to see more."
+              : searchQuery || selectedBranch !== "all"
               ? "No records matched your search query or selected branch."
               : activeTab === "rejected"
               ? "Great! No rejected or cancelled bookings in this section."

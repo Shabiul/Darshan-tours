@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
   if (denied) return denied;
   const body = await req.json().catch(() => null);
   if (body?.op === "blogPost" && typeof body.slug === "string") {
-    const post = getBlogPost(body.slug);
+    const post = await getBlogPost(body.slug);
     return NextResponse.json({ post });
   }
   return NextResponse.json({ error: "Unknown operation." }, { status: 400 });
