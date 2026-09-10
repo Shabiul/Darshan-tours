@@ -700,6 +700,7 @@ export function BookingForm({
                 customerEmail={contact.email}
                 quote={activeQuote}
                 amountPaid={payNowAmount}
+                branchName={activeBranch?.name}
               />
             )}
           </div>

@@ -14,6 +14,7 @@ type Props = {
   amountPaid: number;
   paymentId?: string;
   paymentDate?: string;
+  branchName?: string | null;
 };
 
 export function InlineInvoiceCard({
@@ -26,6 +27,7 @@ export function InlineInvoiceCard({
   amountPaid,
   paymentId,
   paymentDate = formatDate(new Date().toISOString()),
+  branchName,
 }: Props) {
   const invoiceNo = `INV-${new Date().getFullYear()}-${String(bookingId || bookingNo.replace(/\D/g, "") || "10001").slice(-5)}`;
   // `amountPaid` is the ONLINE payment, which never includes the deposit — so the
@@ -53,6 +55,9 @@ export function InlineInvoiceCard({
           <p className="text-xs font-semibold uppercase text-ink-400">Date Paid</p>
           <p className="text-sm font-semibold text-ink-900">{paymentDate}</p>
           <p className="text-xs text-ink-500">Booking: <span className="font-mono font-bold text-ink-900">{bookingNo}</span></p>
+          {branchName && (
+            <p className="text-xs text-ink-500">Pickup branch: <span className="font-semibold text-ink-900">{branchName}</span></p>
+          )}
         </div>
       </div>
 

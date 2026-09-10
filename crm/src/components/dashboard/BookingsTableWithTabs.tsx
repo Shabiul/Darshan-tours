@@ -5,7 +5,10 @@ import Link from "next/link";
 import { formatDateTime, formatINR, waLink } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui";
 import { calculateBookingFinancials } from "@/lib/pricing";
+import { istDateKey } from "@/lib/rental-clock";
 import { BookingReviewModal, type BookingReviewData } from "./BookingReviewModal";
+
+type PickupSort = "default" | "asc" | "desc";
 
 export function BookingsTableWithTabs({
   initialBookings,
@@ -18,6 +21,12 @@ export function BookingsTableWithTabs({
   const [selectedBranch, setSelectedBranch] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedBooking, setSelectedBooking] = useState<BookingReviewData | null>(null);
+  // "Upcoming" scopes the list to today's pickup date and onward (IST calendar day,
+  // not the last 24 hours), earliest first by default — a booking whose pickup already
+  // passed is not upcoming even if it never got handed over. pickupSort is independent
+  // so staff can still sort ascending/descending without the date floor, or combine both.
+  const [pickupSort, setPickupSort] = useState<PickupSort>("default");
+  const [upcomingOnly, setUpcomingOnly] = useState(false);
 
   // Filter Bookings by Tab & Branch
   const branchFilteredList = useMemo(() => {
@@ -84,8 +93,26 @@ export function BookingsTableWithTabs({
       );
     }
 
+    if (upcomingOnly) {
+      const todayKey = istDateKey(new Date());
+      list = list.filter((b) => b.pickup_at && istDateKey(new Date(b.pickup_at)) >= todayKey);
+    }
+
+    // Upcoming defaults to earliest-pickup-first (today, then tomorrow, ...) unless
+    // staff explicitly picked a direction; the direction control also works standalone
+    // without the date floor, for anyone who just wants the full list sorted by pickup.
+    const effectiveSort: PickupSort = pickupSort !== "default" ? pickupSort : upcomingOnly ? "asc" : "default";
+    if (effectiveSort !== "default") {
+      const dir = effectiveSort === "asc" ? 1 : -1;
+      list = [...list].sort((a, b) => {
+        const at = a.pickup_at ? new Date(a.pickup_at).getTime() : 0;
+        const bt = b.pickup_at ? new Date(b.pickup_at).getTime() : 0;
+        return (at - bt) * dir;
+      });
+    }
+
     return list;
-  }, [branchFilteredList, activeTab, searchQuery]);
+  }, [branchFilteredList, activeTab, searchQuery, upcomingOnly, pickupSort]);
 
   return (
     <div className="space-y-4" suppressHydrationWarning>
@@ -199,6 +226,34 @@ export function BookingsTableWithTabs({
             </select>
           </div>
         )}
+
+        {/* Pickup-date sort */}
+        <div className="flex items-center gap-1.5 rounded-xl border border-ink-200 bg-white px-3 py-1.5 shadow-xs">
+          <span className="text-xs text-ink-500">↕ Sort:</span>
+          <select
+            value={pickupSort}
+            onChange={(e) => setPickupSort(e.target.value as PickupSort)}
+            className="bg-transparent text-xs font-bold text-ink-800 focus:outline-none cursor-pointer pr-1"
+          >
+            <option value="default">Newest created</option>
+            <option value="asc">Pickup date ↑ (earliest first)</option>
+            <option value="desc">Pickup date ↓ (latest first)</option>
+          </select>
+        </div>
+
+        {/* Upcoming-only toggle: today's pickup date onward, earliest first */}
+        <button
+          type="button"
+          onClick={() => setUpcomingOnly((v) => !v)}
+          className={`rounded-xl border px-3 py-1.5 text-xs font-bold transition cursor-pointer ${
+            upcomingOnly
+              ? "border-brand-600 bg-brand-600 text-white shadow-xs"
+              : "border-ink-200 bg-white text-ink-600 hover:bg-ink-50"
+          }`}
+          title="Show only today's and future pickups, soonest first"
+        >
+          📅 Upcoming {upcomingOnly ? "✓" : ""}
+        </button>
 
         {/* Quick Search */}
         <div className="relative min-w-[240px] flex-1 sm:max-w-xs">

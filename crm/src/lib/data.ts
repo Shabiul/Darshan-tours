@@ -380,18 +380,29 @@ async function hydrateVehicles(
 
   // Which bookings count as occupying a unit.
   //
-  // Without a window this asks "is this vehicle out at any point from now on", which is
-  // the right question for the CRM fleet list. It is the WRONG question for a booking
-  // search: a reservation on 28 Aug then suppressed the vehicle on every other date,
-  // including 15 Sep, for as long as that booking had not been returned. Mercedes W140
-  // disappeared from 29-30 Aug because of a 28 Aug booking on one of its two units.
+  // Without a window this asks "is this vehicle OUT RIGHT NOW" — i.e. a rental that has
+  // already started and not yet been returned — which is the right question for the CRM
+  // fleet list. It is the WRONG question for a booking search: a reservation on 28 Aug
+  // then suppressed the vehicle on every other date, including 15 Sep, for as long as
+  // that booking had not been returned. Mercedes W140 disappeared from 29-30 Aug because
+  // of a 28 Aug booking on one of its two units.
+  //
+  // The undated branch used to check only return_at >= now, with no lower bound on
+  // pickup_at at all — so a booking that had not even STARTED yet (pickup next week,
+  // pickup next month) also counted as "occupying" the unit today. TVS Jupiter's one
+  // active unit showed "0/1 Unavailable" in the fleet timeline for that exact reason:
+  // three Confirmed bookings with future pickups (tomorrow, in 2 days, in 5 weeks) each
+  // satisfied return_at >= now on their own and permanently zeroed its count, even
+  // though the unit was sitting free in the lot and every actual calendar day — including
+  // the one a staff member was specifically checking — showed correctly as available.
+  // pickup_at <= now is the fix: only a booking that has actually begun holds the unit.
   //
   // With a window it asks "is this vehicle out during the dates the customer asked
   // for", which is the only question the availability filter should be answering.
   const holdsFilter = availabilityWindow
     ? `&return_at=gt.${encodeURIComponent(availabilityWindow.pickupAt)}` +
       `&pickup_at=lt.${encodeURIComponent(availabilityWindow.returnAt)}`
-    : `&return_at=gte.${encodeURIComponent(nowIso)}`;
+    : `&return_at=gte.${encodeURIComponent(nowIso)}&pickup_at=lte.${encodeURIComponent(nowIso)}`;
 
   // Reservation TTL, mirroring reserve_vehicle_unit_slot: a "Pending payment" booking
   // older than 15 minutes with no money against it is an abandoned reservation and
@@ -415,7 +426,9 @@ async function hydrateVehicles(
 
   // Same question, asked of availability_blocks instead of bookings: is this unit/vehicle
   // taken off sale during the window. Column names differ (starts_at/ends_at rather than
-  // pickup_at/return_at) but the overlap logic is identical.
+  // pickup_at/return_at) but the overlap logic is identical — including the same
+  // undated-branch fix: a maintenance block scheduled to START NEXT WEEK does not make
+  // the vehicle unavailable TODAY, only starts_at <= now (a block already in effect) does.
   //
   // booking_id=is.null is deliberate: a real reservation writes BOTH a bookings row and a
   // linked availability_blocks row (see lib/bookings.ts), and that occupancy is already
@@ -424,7 +437,7 @@ async function hydrateVehicles(
   const blocksFilter = availabilityWindow
     ? `&ends_at=gt.${encodeURIComponent(availabilityWindow.pickupAt)}` +
       `&starts_at=lt.${encodeURIComponent(availabilityWindow.returnAt)}`
-    : `&ends_at=gte.${encodeURIComponent(nowIso)}`;
+    : `&ends_at=gte.${encodeURIComponent(nowIso)}&starts_at=lte.${encodeURIComponent(nowIso)}`;
 
   const [photosRes, holdsRes, unitsRes, branchesRes, blocksRes] = await Promise.all([
     sbSelect<{ vehicle_id: number; url: string }>(

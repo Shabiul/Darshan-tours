@@ -21,9 +21,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ book
 
   // The customer/vehicle columns the invoice template prints used to come from a LEFT
   // JOIN; PostgREST returns them as embeds, flattened below to keep the response shape.
+  //
+  // branches(name) is embedded via the booking's OWN branch_id, not the vehicle's —
+  // a booking can legitimately be picked up from a different branch than the
+  // vehicle's home branch (branch re-allocation), and branch_id is the real,
+  // populated column recording which one the customer actually used. Fall back to
+  // the vehicle's branch only for older rows where branch_id was never set.
   const bookingRes = await sbSelectOne<Record<string, any>>(
     "bookings",
-    `select=*,customers(name,phone,email,address),vehicles(name,registration_no)&${filter}`
+    `select=*,customers(name,phone,email,address),vehicles(name,registration_no,branch_id,branches(name)),branches(name)&${filter}`
   );
   if (!bookingRes.ok) return NextResponse.json({ error: bookingRes.error }, { status: 502 });
   const raw = bookingRes.data;
@@ -34,7 +40,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ book
     return NextResponse.json({ error: "Not authorised." }, { status: 403 });
   }
 
-  const { customers, vehicles, ...rest } = raw;
+  const { customers, vehicles, branches, ...rest } = raw;
   const booking = {
     ...rest,
     customer_name: customers?.name ?? null,
@@ -43,6 +49,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ book
     customer_address: customers?.address ?? null,
     vehicle_name: vehicles?.name ?? null,
     registration_no: vehicles?.registration_no ?? null,
+    branch_name: branches?.name ?? vehicles?.branches?.name ?? null,
   };
 
   let invoice = await getInvoiceForBooking(Number(raw.id));

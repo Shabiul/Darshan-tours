@@ -81,6 +81,9 @@ export default async function InvoicePage(props: { params: Promise<{ bookingNo: 
             <p className="mt-1 text-sm text-ink-700">{String(booking.booking_no)}</p>
             <p className="text-sm text-ink-700">{String(booking.vehicle_name)} ({String(booking.registration_no ?? "—")})</p>
             <p className="text-sm text-ink-700">{formatDateTime(String(booking.pickup_at))} → {formatDateTime(String(booking.return_at))}</p>
+            {Boolean(booking.branch_name) && (
+              <p className="text-sm text-ink-700">Pickup branch: <span className="font-medium">{String(booking.branch_name)}</span></p>
+            )}
           </div>
         </div>
 
