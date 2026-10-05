@@ -39,7 +39,7 @@ export default async function PaymentsPage() {
 
   for (const p of rawRows) {
     const rzpId = p.razorpay_payment_id as string | undefined;
-    if (rzpId && (!p.upi_id || !p.bank_ref_no || p.method === "Online")) {
+    if (rzpId && (p.status !== "Paid" || !p.upi_id || !p.bank_ref_no || p.method === "Online")) {
       try {
         const rzpRes = await fetchRazorpayPayment(rzpId);
         if (rzpRes.ok) {
@@ -49,9 +49,20 @@ export default async function PaymentsPage() {
           const liveRrn = rzp.acquirer_data?.rrn || rzp.acquirer_data?.upi_transaction_id || rzp.acquirer_data?.bank_transaction_id || null;
 
           const patch: Record<string, unknown> = { upi_id: liveVpa, vpa: liveVpa };
-          // COALESCE in SQL; here, simply omit the key so the stored value stands.
           if (liveRrn) patch.bank_ref_no = liveRrn;
           if (liveMethod) patch.method = liveMethod;
+
+          if (rzp.status === "captured" && p.status !== "Paid") {
+            patch.status = "Paid";
+            patch.paid_at = rzp.created_at ? new Date(rzp.created_at * 1000).toISOString() : new Date().toISOString();
+            p.status = "Paid";
+            p.paid_at = patch.paid_at;
+            if (p.booking_id) {
+              const { generateInvoiceForBooking } = await import("@/lib/invoices");
+              await generateInvoiceForBooking(Number(p.booking_id)).catch(() => null);
+            }
+          }
+
           await sbUpdate("payments", `id=eq.${Number(p.id)}`, patch);
 
           p.upi_id = liveVpa;

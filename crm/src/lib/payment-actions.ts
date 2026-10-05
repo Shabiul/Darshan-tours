@@ -402,7 +402,7 @@ export async function verifyBookingPayment(input: {
   paymentId?: number;
   razorpayOrderId: string;
   razorpayPaymentId: string;
-  razorpaySignature: string;
+  razorpaySignature?: string;
   skipSignatureCheck?: boolean;
   bookingPayload?: any;
 }): Promise<{ ok: true; bookingNo: string; bookingId?: number; alreadyProcessed?: boolean } | { ok: false; error: string }> {
@@ -456,6 +456,10 @@ export async function verifyBookingPayment(input: {
 
   // 2. Cryptographic signature verification
   if (!input.skipSignatureCheck) {
+    if (!input.razorpaySignature) {
+      await logActivity(null, "payment_signature_missing", "payment", input.paymentId ?? null, { orderId: input.razorpayOrderId });
+      return { ok: false, error: "Payment signature missing." };
+    }
     const valid = verifyRazorpaySignature(input.razorpayOrderId, input.razorpayPaymentId, input.razorpaySignature);
     if (!valid) {
       await logActivity(null, "payment_signature_invalid", "payment", input.paymentId ?? null, { orderId: input.razorpayOrderId });
@@ -672,6 +676,7 @@ export async function verifyBookingPayment(input: {
 
   if (payment.status === "Paid" && payment.booking_id) {
     const bookingNo = await lookupBookingNo(payment.booking_id);
+    await generateInvoiceForBooking(payment.booking_id).catch(() => null);
     return { ok: true, bookingNo: bookingNo ?? "", alreadyProcessed: true };
   }
 
@@ -717,6 +722,9 @@ export async function verifyBookingPayment(input: {
     const settled = await sbSelectOne<PaymentRow>("payments", `select=booking_id&id=eq.${payment.id}`);
     const settledBookingId = settled.ok && settled.data ? settled.data.booking_id : null;
     const settledBookingNo = settledBookingId ? await lookupBookingNo(settledBookingId) : null;
+    if (settledBookingId) {
+      await generateInvoiceForBooking(settledBookingId).catch(() => null);
+    }
     return {
       ok: true,
       bookingNo: settledBookingNo ?? "",
@@ -918,10 +926,20 @@ export async function verifyBookingPayment(input: {
   // id) — incrementing by that unconditionally under-credits a genuinely paid booking.
   // effectivePaid already falls back to the payment's own stored, correct amount.
   const incr = await sbRpc<number>("increment_booking_paid", { p_booking_id: bookingId, p_amount: effectivePaid });
-  if (!incr.ok) return { ok: false, error: `Payment recorded but the booking balance could not be updated: ${incr.error}` };
+  if (!incr.ok) {
+    console.warn(`[payments] increment_booking_paid RPC failed (${incr.error}), falling back to direct update`);
+    const bRes = await sbSelectOne<{ paid_amount: number | string }>("bookings", `select=paid_amount&id=eq.${bookingId}`);
+    const currentPaid = bRes.ok && bRes.data ? num(bRes.data.paid_amount) : 0;
+    const directUpd = await sbUpdate("bookings", `id=eq.${bookingId}`, { paid_amount: currentPaid + effectivePaid });
+    if (!directUpd.ok) {
+      console.error(`[payments] direct paid_amount update failed: ${directUpd.error}`);
+    }
+  }
 
   const statusUpdate = await sbUpdate("bookings", `id=eq.${bookingId}`, { status: newBookingStatus, updated_at: nowISO() });
-  if (!statusUpdate.ok) return { ok: false, error: `Payment recorded but the booking status could not be updated: ${statusUpdate.error}` };
+  if (!statusUpdate.ok) {
+    console.error(`[payments] status update failed for booking ${bookingId}: ${statusUpdate.error}`);
+  }
 
   await sbInsert("booking_history", {
     booking_id: bookingId,

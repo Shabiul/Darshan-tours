@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { formatDate, formatDateTime, formatINR, waLink } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui";
 import { PaymentDetailModal, type PaymentTransactionData } from "./PaymentDetailModal";
-import { markPaymentPaid } from "@/lib/actions";
+import { markPaymentPaid, syncRazorpayAction } from "@/lib/actions";
 
 export function PaymentsTableWithDrawer({
   initialPayments,
@@ -15,9 +15,33 @@ export function PaymentsTableWithDrawer({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const [activeTab, setActiveTab] = useState<"all" | "paid" | "pending" | "deposits">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPayment, setSelectedPayment] = useState<PaymentTransactionData | null>(null);
+
+  async function handleSyncRazorpay() {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await syncRazorpayAction();
+      if (res.ok) {
+        setSyncResult({
+          ok: true,
+          msg: `Sync successful! ${res.reconciledCount} payments reconciled, ${res.repairedAmountCount} balances repaired, ${res.invoicesGenerated} invoices generated.`,
+        });
+        router.refresh();
+      } else {
+        setSyncResult({ ok: false, msg: `Sync failed: ${res.error}` });
+      }
+    } catch (err: any) {
+      setSyncResult({ ok: false, msg: `Sync error: ${err?.message || err}` });
+    } finally {
+      setSyncing(false);
+      setTimeout(() => setSyncResult(null), 8000);
+    }
+  }
 
   const allCount = initialPayments.length;
   const paidCount = initialPayments.filter((p) => p.status === "Paid").length;
@@ -152,28 +176,76 @@ export function PaymentsTableWithDrawer({
           </button>
         </nav>
 
-        {/* Search Box */}
-        <div className="relative min-w-[240px] flex-1 sm:max-w-xs">
-          <input
-            type="text"
-            placeholder="Search payment #, UPI ID, customer, txn ID..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full rounded-xl border border-ink-200 bg-white py-1.5 pl-8 pr-3 text-xs text-ink-900 placeholder:text-ink-400 focus:border-brand-500 focus:outline-hidden"
-          />
-          <svg className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-ink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery("")}
-              className="absolute right-2.5 top-1.5 text-xs text-ink-400 hover:text-ink-900"
+        {/* Search & Actions */}
+        <div className="flex flex-wrap items-center gap-2 flex-1 sm:max-w-md justify-end">
+          <button
+            type="button"
+            disabled={syncing}
+            onClick={handleSyncRazorpay}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-ink-200 bg-white px-3 py-1.5 text-xs font-semibold text-ink-700 shadow-xs hover:bg-ink-50 transition shrink-0 cursor-pointer disabled:opacity-50"
+            title="Sync all transactions and invoices with Razorpay"
+          >
+            <svg
+              className={`h-3.5 w-3.5 text-brand-600 ${syncing ? "animate-spin" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-              ✕
-            </button>
-          )}
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            <span>{syncing ? "Syncing..." : "Sync Razorpay"}</span>
+          </button>
+
+          {/* Search Box */}
+          <div className="relative min-w-[200px] flex-1">
+            <input
+              type="text"
+              placeholder="Search payment #, UPI ID, customer, txn ID..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full rounded-xl border border-ink-200 bg-white py-1.5 pl-8 pr-3 text-xs text-ink-900 placeholder:text-ink-400 focus:border-brand-500 focus:outline-hidden"
+            />
+            <svg className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-ink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2.5 top-1.5 text-xs text-ink-400 hover:text-ink-900"
+              >
+                ✕
+              </button>
+            )}
+          </div>
         </div>
       </div>
+
+      {syncResult && (
+        <div
+          className={`flex items-center justify-between rounded-xl p-3 text-xs border ${
+            syncResult.ok
+              ? "bg-emerald-50 text-emerald-900 border-emerald-200"
+              : "bg-red-50 text-red-900 border-red-200"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <span>{syncResult.ok ? "✅" : "⚠️"}</span>
+            <span className="font-medium">{syncResult.msg}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSyncResult(null)}
+            className="text-xs font-bold hover:underline opacity-70 hover:opacity-100"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Payments Table */}
       {filteredPayments.length === 0 ? (

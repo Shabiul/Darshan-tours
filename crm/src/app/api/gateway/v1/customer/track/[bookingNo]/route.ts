@@ -37,7 +37,20 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ boo
 
   const bookingId = Number(booking.id);
   const customerId = Number(booking.customer_id) || 0;
-  const invoice = Array.isArray(booking.invoices) ? booking.invoices[0] : booking.invoices;
+  let invoice = Array.isArray(booking.invoices) ? booking.invoices[0] : booking.invoices;
+
+  if (!invoice && (booking.status === "Confirmed" || booking.status === "Payment received" || num(booking.paid_amount) > 0)) {
+    try {
+      const { generateInvoiceForBooking, getInvoiceForBooking } = await import("@/lib/invoices");
+      await generateInvoiceForBooking(bookingId);
+      const freshlyGenerated = await getInvoiceForBooking(bookingId);
+      if (freshlyGenerated) {
+        invoice = freshlyGenerated;
+      }
+    } catch (e) {
+      console.warn(`[tracker] invoice generation failed for ${bookingId}:`, e);
+    }
+  }
 
   const [photoRes, docsRes, paymentsRes, historyRes] = await Promise.all([
     booking.vehicle_id
@@ -118,6 +131,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ boo
         method: p.method ? String(p.method) : "Online",
         paid_at: p.paid_at ? String(p.paid_at) : null,
       })),
+      invoice: invoice ? { invoice_no: String(invoice.invoice_no), created_at: invoice.created_at } : null,
       created_at: booking.created_at,
     },
   });

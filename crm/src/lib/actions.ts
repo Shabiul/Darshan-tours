@@ -1615,12 +1615,24 @@ export async function addDamageReport(input: { bookingId: number; inspectionId?:
 
 /* --------------------------------- Payments --------------------------------- */
 
-export async function addPayment(input: { bookingId: number; amount: number; kind?: string; method?: string; dueDate?: string; notes?: string; proofUrl?: string }) {
+export async function addPayment(input: {
+  bookingId: number;
+  amount: number;
+  kind?: string;
+  method?: string;
+  dueDate?: string;
+  notes?: string;
+  proofUrl?: string;
+  status?: "Pending" | "Paid";
+}) {
   const user = await staffUser();
 
   const booking = await sbSelectOne<{ customer_id: number | null }>("bookings", `select=customer_id&id=eq.${input.bookingId}`);
   if (!booking.ok) return fail(booking, "Reading the booking");
   if (!booking.data) return { ok: false as const, error: `Booking ${input.bookingId} no longer exists.` };
+
+  const isPaid = input.status === "Paid" || (!input.dueDate && input.status !== "Pending");
+  const now = nowIso();
 
   const payment = await insertWithNumber<{ id: number }>("payments", "payment_no", "PY", {
     booking_id: input.bookingId,
@@ -1629,13 +1641,41 @@ export async function addPayment(input: { bookingId: number; amount: number; kin
     kind: input.kind ?? "advance",
     method: input.method ?? null,
     due_date: input.dueDate ?? null,
-    status: "Pending",
+    status: isPaid ? "Paid" : "Pending",
+    paid_at: isPaid ? now : null,
     notes: input.notes ?? null,
     proof_url: input.proofUrl ?? null,
   });
   if (!payment.ok) return fail(payment, "Creating the payment");
 
-  await logActivity(user.id, "payment_created", "booking", input.bookingId, { amount: input.amount });
+  if (isPaid) {
+    const paymentId = Number(payment.data.row.id);
+    const receiptNo = docNumber("RC", paymentId);
+    await sbUpdate("payments", `id=eq.${paymentId}`, { receipt_no: receiptNo });
+    const applied = await sbRpc("increment_booking_paid", { p_booking_id: input.bookingId, p_amount: input.amount });
+    if (!applied.ok) {
+      console.warn(`[payments] increment_booking_paid failed, trying direct update: ${applied.error}`);
+      const bRes = await sbSelectOne<{ paid_amount: number | string }>("bookings", `select=paid_amount&id=eq.${input.bookingId}`);
+      const curr = bRes.ok && bRes.data ? num(bRes.data.paid_amount) : 0;
+      await sbUpdate("bookings", `id=eq.${input.bookingId}`, { paid_amount: curr + input.amount });
+    }
+
+    const bRow = await sbSelectOne<{ status: string }>("bookings", `select=status&id=eq.${input.bookingId}`);
+    if (bRow.ok && bRow.data) {
+      if (bRow.data.status === "Pending payment" || bRow.data.status === "Draft") {
+        await sbUpdate("bookings", `id=eq.${input.bookingId}`, { status: "Confirmed", updated_at: nowIso() });
+      } else if (bRow.data.status === "Pending verification") {
+        await sbUpdate("bookings", `id=eq.${input.bookingId}`, { status: "Payment received", updated_at: nowIso() });
+      }
+    }
+
+    const { generateInvoiceForBooking } = await import("./invoices");
+    await generateInvoiceForBooking(input.bookingId).catch((err) => {
+      console.error(`[payments] invoice generation failed for booking ${input.bookingId}:`, err);
+    });
+  }
+
+  await logActivity(user.id, isPaid ? "payment_paid" : "payment_created", "booking", input.bookingId, { amount: input.amount });
   refresh();
   return { ok: true as const };
 }
@@ -1668,30 +1708,167 @@ export async function markPaymentPaid(id: number, gatewayRef?: string) {
 
   if (payment.booking_id) {
     const applied = await sbRpc("increment_booking_paid", { p_booking_id: payment.booking_id, p_amount: amount });
-    if (!applied.ok) return fail(applied, "Applying the payment to the booking");
-  }
+    if (!applied.ok) {
+      console.warn(`[payments] increment_booking_paid failed in markPaymentPaid, direct update fallback: ${applied.error}`);
+      const bRes = await sbSelectOne<{ paid_amount: number | string }>("bookings", `select=paid_amount&id=eq.${payment.booking_id}`);
+      const curr = bRes.ok && bRes.data ? num(bRes.data.paid_amount) : 0;
+      await sbUpdate("bookings", `id=eq.${payment.booking_id}`, { paid_amount: curr + amount });
+    }
 
-  if (payment.customer_id) {
-    const customer = await sbSelectOne<{ phone: string | null; name: string }>("customers", `select=phone,name&id=eq.${payment.customer_id}`);
-    if (customer.ok && customer.data?.phone) {
-      await sendTemplate(
-        "invoice_generated",
-        customer.data.phone,
-        {
-          name: customer.data.name,
-          amount: `₹${amount.toLocaleString("en-IN")}`,
-          total: `₹${amount.toLocaleString("en-IN")}`,
-          booking_no: payment.payment_no,
-        },
-        null,
-        payment.booking_id
-      ).catch(() => null);
+    const { generateInvoiceForBooking } = await import("./invoices");
+    const inv = await generateInvoiceForBooking(payment.booking_id).catch(() => null);
+
+    const bRow = await sbSelectOne<{ status: string; booking_no: string }>("bookings", `select=status,booking_no&id=eq.${payment.booking_id}`);
+    if (bRow.ok && bRow.data) {
+      if (bRow.data.status === "Pending payment" || bRow.data.status === "Draft") {
+        await sbUpdate("bookings", `id=eq.${payment.booking_id}`, { status: "Confirmed", updated_at: nowIso() });
+      }
+      if (payment.customer_id) {
+        const customer = await sbSelectOne<{ phone: string | null; name: string }>("customers", `select=phone,name&id=eq.${payment.customer_id}`);
+        if (customer.ok && customer.data?.phone) {
+          await sendTemplate(
+            "invoice_generated",
+            customer.data.phone,
+            {
+              name: customer.data.name,
+              amount: `₹${amount.toLocaleString("en-IN")}`,
+              total: `₹${amount.toLocaleString("en-IN")}`,
+              booking_no: bRow.data.booking_no || payment.payment_no,
+              invoice_no: inv?.invoiceNo || "",
+            },
+            null,
+            payment.booking_id
+          ).catch(() => null);
+        }
+      }
     }
   }
 
   await logActivity(user.id, "payment_paid", "payment", id, { amount, receipt: receiptNo });
   refresh();
   return { ok: true as const };
+}
+
+/**
+ * On-demand staff action to reconcile Razorpay transactions, auto-heal
+ * any drifted booking balances, and generate any missing invoices.
+ */
+export async function syncRazorpayAction() {
+  const user = await staffUser();
+  assertCan(user, "payments");
+
+  const keyId = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+  if (!keyId || !keySecret) {
+    return { ok: false as const, error: "Razorpay credentials are not configured." };
+  }
+
+  // Sweep expired reservations
+  await sbRpc<number>("release_expired_reservations", {}).catch(() => null);
+
+  const authHeader = "Basic " + Buffer.from(`${keyId}:${keySecret}`).toString("base64");
+  let items: any[] = [];
+  try {
+    const rzpRes = await fetch("https://api.razorpay.com/v1/payments?count=100", {
+      headers: { Authorization: authHeader },
+      cache: "no-store",
+    });
+    if (rzpRes.ok) {
+      const rzpData = await rzpRes.json();
+      items = Array.isArray(rzpData?.items) ? rzpData.items : [];
+    }
+  } catch (err: any) {
+    return { ok: false as const, error: `Could not reach Razorpay: ${err?.message || err}` };
+  }
+
+  let reconciledCount = 0;
+  let repairedAmountCount = 0;
+
+  for (const item of items) {
+    if (item?.status !== "captured" || !item.id) continue;
+
+    const encId = encodeURIComponent(item.id);
+    const encOrder = item.order_id ? encodeURIComponent(item.order_id) : null;
+    const filter = encOrder
+      ? `or=(razorpay_payment_id.eq.${encId},gateway_ref.eq.${encId},razorpay_order_id.eq.${encOrder},gateway_ref.eq.${encOrder})`
+      : `or=(razorpay_payment_id.eq.${encId},gateway_ref.eq.${encId})`;
+
+    const localRes = await sbSelectOne<{ id: number; booking_id: number | null; status: string; payment_no: string }>(
+      "payments",
+      `select=id,booking_id,status,payment_no&${filter}`
+    );
+
+    const local = localRes.ok ? localRes.data : null;
+
+    if (local) {
+      if (local.status !== "Paid") {
+        await sbUpdate("payments", `id=eq.${local.id}`, {
+          status: "Paid",
+          razorpay_payment_id: item.id,
+          gateway_ref: item.id,
+          paid_at: new Date(item.created_at * 1000).toISOString(),
+        });
+        reconciledCount++;
+      }
+
+      if (local.booking_id) {
+        const paidRows = await sbSelect<{ amount: number | string }>(
+          "payments",
+          `select=amount&booking_id=eq.${local.booking_id}&status=eq.Paid`
+        );
+        if (paidRows.ok) {
+          const totalPaid = paidRows.data.reduce((sum, r) => sum + num(r.amount), 0);
+          const bRes = await sbSelectOne<{ paid_amount: number | string; status: string }>(
+            "bookings",
+            `select=paid_amount,status&id=eq.${local.booking_id}`
+          );
+          if (bRes.ok && bRes.data) {
+            const currentPaid = num(bRes.data.paid_amount);
+            if (currentPaid !== totalPaid) {
+              await sbUpdate("bookings", `id=eq.${local.booking_id}`, {
+                paid_amount: totalPaid,
+                updated_at: nowIso(),
+              });
+              repairedAmountCount++;
+            }
+            if (bRes.data.status === "Pending payment" || bRes.data.status === "Draft") {
+              await sbUpdate("bookings", `id=eq.${local.booking_id}`, { status: "Confirmed", updated_at: nowIso() });
+            }
+          }
+        }
+        const { generateInvoiceForBooking } = await import("./invoices");
+        await generateInvoiceForBooking(local.booking_id).catch(() => null);
+      }
+    } else {
+      try {
+        const { verifyBookingPayment } = await import("./payment-actions");
+        const res = await verifyBookingPayment({
+          razorpayOrderId: item.order_id || "",
+          razorpayPaymentId: item.id,
+          skipSignatureCheck: true,
+        });
+        if (res && res.ok) reconciledCount++;
+      } catch {}
+    }
+  }
+
+  const { healMissingInvoices } = await import("./invoices");
+  const invRepairs = await healMissingInvoices().catch(() => ({ scanned: 0, generated: 0 }));
+
+  await logActivity(user.id, "razorpay_sync_triggered", "system", null, {
+    reconciledCount,
+    repairedAmountCount,
+    invoicesGenerated: invRepairs.generated,
+  });
+
+  refresh();
+
+  return {
+    ok: true as const,
+    reconciledCount,
+    repairedAmountCount,
+    invoicesGenerated: invRepairs.generated,
+  };
 }
 
 /* --------------------------------- Refunds ----------------------------------- */
@@ -2407,6 +2584,7 @@ export async function createManualBooking(input: {
       method: input.paymentMethod || "Cash",
       notes: "Collected at the counter",
       proofUrl: input.paymentProofUrl,
+      status: "Paid",
     });
     if (!payment.ok) {
       // The booking exists and holds its unit — do not fail the whole thing over the

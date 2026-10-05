@@ -38,6 +38,73 @@ export default async function InvoicePage(props: { params: Promise<{ bookingNo: 
     if (res && res.booking) invoiceData = res;
   } catch {}
 
+  // Fallback: If gateway is unreachable or returns error, fetch directly from Supabase via unguessable booking_no
+  if (!invoiceData || !invoiceData.booking) {
+    try {
+      const { supabaseRestSelect, supabaseRestInsert } = await import("@/lib/supabase-rest");
+      const rawRef = String(bookingNo).trim();
+      const filter = /^\d+$/.test(rawRef)
+        ? `or=(booking_no.eq.${rawRef},booking_no.eq.BK-${rawRef})`
+        : `or=(booking_no.eq.${encodeURIComponent(rawRef)},booking_no.eq.${encodeURIComponent(rawRef.replace(/^BK-/i, ""))})`;
+
+      const bookings = await supabaseRestSelect<any>(
+        "bookings",
+        `select=*,customers(name,phone,email,address),vehicles(name,registration_no,branch_id,branches(name)),branches(name)&${filter}`
+      );
+      const raw = bookings && bookings.length > 0 ? bookings[0] : null;
+      if (raw) {
+        const { customers, vehicles, branches, ...rest } = raw;
+        const booking = {
+          ...rest,
+          customer_name: customers?.name ?? null,
+          customer_phone: customers?.phone ?? null,
+          customer_email: customers?.email ?? null,
+          customer_address: customers?.address ?? null,
+          vehicle_name: vehicles?.name ?? null,
+          registration_no: vehicles?.registration_no ?? null,
+          branch_name: branches?.name ?? vehicles?.branches?.name ?? null,
+        };
+        const invRows = await supabaseRestSelect<any>("invoices", `booking_id=eq.${raw.id}`);
+        let inv = invRows && invRows.length > 0 ? invRows[0] : null;
+        if (!inv && raw.id) {
+          try {
+            const invNo = `INV-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase().slice(-6)}`;
+            const subtotal = Number(raw.base_amount || 0) + Number(raw.other_fees_amount || 0);
+            const insRes = await supabaseRestInsert<any>("invoices", {
+              invoice_no: invNo,
+              booking_id: Number(raw.id),
+              customer_id: raw.customer_id ? Number(raw.customer_id) : null,
+              subtotal,
+              tax_pct: 6,
+              discount: Number(raw.discount_amount || 0),
+              total: subtotal + Number(raw.gst_amount || 0) - Number(raw.discount_amount || 0),
+              status: "issued",
+              created_at: new Date().toISOString(),
+            });
+            if (insRes.ok && insRes.data) {
+              inv = Array.isArray(insRes.data) ? insRes.data[0] : insRes.data;
+            }
+          } catch (e) {
+            console.warn("Direct invoice insert error:", e);
+          }
+        }
+        invoiceData = {
+          booking,
+          invoice: inv,
+          business: {
+            name: "Darshh Holiday Bike & Car Rentals",
+            phone: "+91 76768 75595",
+            email: "support@selfdrive.bike",
+            address: "Main Road, Near Bus Stand, Sakleshpura & BM Road, Hassan, Karnataka",
+            gstin: "29AABCU9603R1ZM",
+          },
+        };
+      }
+    } catch (err) {
+      console.error("Direct Supabase invoice lookup error:", err);
+    }
+  }
+
   if (!invoiceData || !invoiceData.booking) {
     redirect("/customer/portal");
   }

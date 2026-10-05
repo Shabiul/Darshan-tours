@@ -232,7 +232,24 @@ export async function GET(req: NextRequest) {
   for (const item of items) {
     if (item?.status !== "captured" || !item.id) continue;
 
-    const local = await findLocalPayment(item);
+    let local = await findLocalPayment(item);
+
+    if (!local) {
+      try {
+        const { verifyBookingPayment } = await import("@/lib/payment-actions");
+        const res = await verifyBookingPayment({
+          razorpayOrderId: item.order_id || "",
+          razorpayPaymentId: item.id,
+          skipSignatureCheck: true,
+        });
+        if (res && res.ok) {
+          local = await findLocalPayment(item);
+          syncedRazorpayCount++;
+        }
+      } catch (recErr) {
+        console.warn(`[sync-sweep] auto-link attempt failed for ${item.id}:`, recErr);
+      }
+    }
 
     if (!local) {
       orphans.push({
@@ -268,6 +285,8 @@ export async function GET(req: NextRequest) {
         if (healed.changed) {
           paidAmountRepairs.push({ paymentNo: local.payment_no, bookingId: local.booking_id, paidTotal: healed.paidTotal });
         }
+        const { generateInvoiceForBooking } = await import("@/lib/invoices");
+        await generateInvoiceForBooking(local.booking_id).catch(() => null);
       }
       continue;
     }
@@ -301,6 +320,11 @@ export async function GET(req: NextRequest) {
       // paid_amount has to move with the status, or the booking reads
       // "Confirmed — ₹0 paid" against a non-zero total.
       const { paidTotal } = await reconcileBookingPaidAmount(local.booking_id);
+
+      const { generateInvoiceForBooking } = await import("@/lib/invoices");
+      await generateInvoiceForBooking(local.booking_id).catch((err) => {
+        console.error(`[sync-sweep] invoice generation failed for booking ${local.booking_id}:`, err);
+      });
 
       // The webhook path writes booking_history on every verified payment; without the
       // same entry here a swept payment appears in the ledger with no explanation of
@@ -362,11 +386,16 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  // Auto-heal any confirmed/paid bookings across the database lacking an invoice
+  const { healMissingInvoices } = await import("@/lib/invoices");
+  const invoiceHeal = await healMissingInvoices().catch(() => ({ scanned: 0, generated: 0 }));
+
   return NextResponse.json({
     ok: failures.length === 0,
     webhook,
     syncedRazorpayCount,
     paidAmountRepairs,
+    invoicesGenerated: invoiceHeal.generated,
     expiredReservationsReleased: sweptReservations.ok ? sweptReservations.data : null,
     orphanCount: orphans.length,
     orphans,

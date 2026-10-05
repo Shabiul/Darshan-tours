@@ -485,23 +485,45 @@ export function DamageReportForm({ bookingId }: { bookingId: number }) {
 }
 
 export function PaymentForm({ bookingId }: { bookingId: number }) {
-  const [form, setForm] = useState({ amount: "", kind: "advance", method: "UPI", dueDate: "", notes: "" });
+  const [form, setForm] = useState<{
+    amount: string;
+    kind: string;
+    method: string;
+    dueDate: string;
+    notes: string;
+    status: "Paid" | "Pending";
+  }>({ amount: "", kind: "advance", method: "UPI", dueDate: "", notes: "", status: "Paid" });
   const { pending, error, run } = useAction();
   function submit(e: React.FormEvent) {
     e.preventDefault();
     const amount = Number(form.amount);
     if (!amount || amount <= 0) return;
     run(async () => {
-      await addPayment({ bookingId, amount, kind: form.kind, method: form.method, dueDate: form.dueDate || undefined, notes: form.notes || undefined });
+      await addPayment({
+        bookingId,
+        amount,
+        kind: form.kind,
+        method: form.method,
+        dueDate: form.dueDate || undefined,
+        notes: form.notes || undefined,
+        status: form.status,
+      });
       setForm({ ...form, amount: "", notes: "" });
     });
   }
   return (
     <form onSubmit={submit} className="space-y-3">
-      <div className="grid gap-3 sm:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-5">
         <div>
           <label className="label">Amount *</label>
           <input className="input" type="number" min={1} value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
+        </div>
+        <div>
+          <label className="label">Status</label>
+          <select className="input" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as "Paid" | "Pending" })}>
+            <option value="Paid">Paid (Collected)</option>
+            <option value="Pending">Pending (Due)</option>
+          </select>
         </div>
         <div>
           <label className="label">Kind</label>

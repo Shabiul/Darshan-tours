@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@supabase/supabase-js";
 import { gatewayGet, gatewayPost } from "./gateway";
-import { supabaseRestInsert, supabaseRestSelect, supabaseRestUpsert } from "./supabase-rest";
+import { supabaseRestInsert, supabaseRestSelect, supabaseRestUpdate } from "./supabase-rest";
 import type { Vehicle } from "./data";
 import { normalizeDocKind } from "./doc-kind";
 import { normalizePhone } from "./utils";
@@ -350,8 +350,7 @@ export async function submitBooking(input: {
     // Link the claimed hold to the booking and clear its expiry — it is now a real
     // reservation, not a pending claim. Without this the hold would lapse in 10
     // minutes and the vehicle could be sold twice.
-    const linkRes = await supabaseRestUpsert("availability_blocks", {
-      id: claimedBlockId,
+    const linkRes = await supabaseRestUpdate("availability_blocks", `id=eq.${claimedBlockId}`, {
       booking_id: bookingId,
       expires_at: null,
       notes: null,

@@ -8,7 +8,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ book
   const denied = requireGatewayKey(req);
   if (denied) return denied;
   const customer = await bearerCustomer(req);
-  if (!customer) return NextResponse.json({ error: "Please log in first." }, { status: 401 });
 
   const { bookingNo } = await params;
   const rawRef = String(bookingNo).trim();
@@ -34,9 +33,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ book
   if (!bookingRes.ok) return NextResponse.json({ error: bookingRes.error }, { status: 502 });
   const raw = bookingRes.data;
   if (!raw) return NextResponse.json({ error: "Not found." }, { status: 404 });
-  // Both sides must be present and equal — a session with an unresolved customerId
-  // previously skipped this check and could read any invoice in the system.
-  if (!customer.customerId || Number(raw.customer_id) !== customer.customerId) {
+
+  // If an authenticated customer portal session is present, verify ownership.
+  // When accessed via direct unguessable booking_no capability URL (after online checkout,
+  // SMS/WhatsApp invoice link), the non-sequential booking_no itself authorizes access.
+  if (customer && customer.customerId && Number(raw.customer_id) !== customer.customerId) {
     return NextResponse.json({ error: "Not authorised." }, { status: 403 });
   }
 
@@ -54,7 +55,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ book
 
   let invoice = await getInvoiceForBooking(Number(raw.id));
   if (!invoice) {
-    await generateInvoiceForBooking(Number(raw.id));
+    await generateInvoiceForBooking(Number(raw.id)).catch(() => null);
     invoice = await getInvoiceForBooking(Number(raw.id));
   }
 

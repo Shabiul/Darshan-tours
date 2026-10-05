@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse, after } from "next/server";
-import { verifyRazorpayWebhookSignature } from "@/lib/razorpay";
+import { verifyRazorpayWebhookSignature, fetchRazorpayOrderPayments } from "@/lib/razorpay";
 import { verifyBookingPayment, recordFailedPaymentAttempt } from "@/lib/payment-actions";
 import { logActivity } from "@/lib/activity";
 import { sbSelectOne, sbInsert, sbUpdate } from "@/lib/supabase-rest";
@@ -183,20 +183,53 @@ async function processEvent(
   let processingError: string | null = null;
 
   if (eventType === "payment.captured" || eventType === "order.paid") {
-    const capturedEntity = payload?.payment?.entity ?? payload?.order?.entity;
-    const capturedOrderId = capturedEntity?.order_id ?? capturedEntity?.id;
-    const capturedPaymentId = capturedEntity?.id ?? capturedEntity?.payment_id;
+    const paymentEntity = payload?.payment?.entity;
+    const orderEntity = payload?.order?.entity;
+    const capturedOrderId = paymentEntity?.order_id ?? orderEntity?.id ?? null;
+    let capturedPaymentId = paymentEntity?.id ?? orderEntity?.payment_id ?? null;
+    const receipt = paymentEntity?.receipt ?? orderEntity?.receipt ?? null;
 
-    if (capturedOrderId && capturedPaymentId) {
-      const paymentRow = await findPaymentByOrder(capturedOrderId);
+    if (!capturedPaymentId && capturedOrderId) {
+      const orderPayRes = await fetchRazorpayOrderPayments(capturedOrderId);
+      if (orderPayRes.ok && orderPayRes.payments.length > 0) {
+        const successful = orderPayRes.payments.find((p) => p.status === "captured" || p.status === "authorized") ?? orderPayRes.payments[0];
+        capturedPaymentId = successful?.id;
+      }
+    }
+
+    if (capturedPaymentId) {
+      let paymentRow: { id: number } | null = null;
+      if (capturedOrderId) {
+        paymentRow = await findPaymentByOrder(capturedOrderId);
+      }
+      if (!paymentRow) {
+        const byPayment = await sbSelectOne<{ id: number }>(
+          "payments",
+          `select=id&razorpay_payment_id=eq.${encodeURIComponent(capturedPaymentId)}`
+        );
+        if (byPayment.ok && byPayment.data) paymentRow = byPayment.data;
+      }
+      if (!paymentRow && receipt) {
+        const byReceipt = await sbSelectOne<{ id: number }>(
+          "payments",
+          `select=id&payment_no=eq.${encodeURIComponent(receipt)}`
+        );
+        if (byReceipt.ok && byReceipt.data) paymentRow = byReceipt.data;
+      }
+
       const result = await verifyBookingPayment({
         paymentId: paymentRow?.id,
-        razorpayOrderId: capturedOrderId,
+        razorpayOrderId: capturedOrderId || "",
         razorpayPaymentId: capturedPaymentId,
         razorpaySignature: signature,
         skipSignatureCheck: true,
       });
-      if (!result.ok) processingError = result.error;
+      if (!result.ok) {
+        processingError = result.error;
+      } else if (result.bookingId) {
+        const { generateInvoiceForBooking } = await import("@/lib/invoices");
+        await generateInvoiceForBooking(result.bookingId).catch(() => null);
+      }
     }
   } else if (eventType === "payment.failed") {
     const paymentEntity = payload?.payment?.entity;
